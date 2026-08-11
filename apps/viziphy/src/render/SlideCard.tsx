@@ -10,6 +10,7 @@ import {
 import type { SlideContent } from "@r2q2/ai-core";
 import { parseAspectRatio } from "./aspectRatio";
 import { enforceTextDensity } from "./textDensity";
+import { brandTextStyle, type BrandFontKey } from "../fonts";
 
 const ACCENT_BAR_WIDTH = 6;
 const PADDING = 24;
@@ -35,6 +36,7 @@ interface EmphasisTextProps {
   emphasisWords?: string[];
   style: TextStyle;
   highlightColor: string;
+  fontFamily?: BrandFontKey;
 }
 
 /** Renders `text`, bolding+coloring any word that's a substring of one of
@@ -46,12 +48,14 @@ function EmphasisText({
   emphasisWords,
   style,
   highlightColor,
+  fontFamily,
 }: EmphasisTextProps) {
   if (!emphasisWords || emphasisWords.length === 0) {
     return <Text style={style}>{text}</Text>;
   }
   const targets = emphasisWords.map((w) => w.toLowerCase());
   const parts = text.split(/(\s+)/);
+  const emphasisStyle = { color: highlightColor, ...brandTextStyle(fontFamily, "bold") };
   return (
     <Text style={style}>
       {parts.map((part, i) => {
@@ -59,10 +63,7 @@ function EmphasisText({
         const isEmphasized =
           bare.length > 0 && targets.some((t) => t.includes(bare));
         return (
-          <Text
-            key={i}
-            style={isEmphasized ? { color: highlightColor, fontWeight: "700" } : undefined}
-          >
+          <Text key={i} style={isEmphasized ? emphasisStyle : undefined}>
             {part}
           </Text>
         );
@@ -86,14 +87,24 @@ function Watermark() {
   return <Text style={styles.watermark}>Made with Viziphy</Text>;
 }
 
-function Bullets({ bullets, accentColor, align = "left" }: { bullets?: string[]; accentColor: string; align?: "left" | "center" }) {
+function Bullets({
+  bullets,
+  accentColor,
+  align = "left",
+  fontFamily,
+}: {
+  bullets?: string[];
+  accentColor: string;
+  align?: "left" | "center";
+  fontFamily?: BrandFontKey;
+}) {
   if (!bullets || bullets.length === 0) return null;
   return (
     <View style={[styles.bullets, align === "center" && styles.bulletsCentered]}>
       {bullets.map((bullet, i) => (
         <View key={i} style={styles.bulletRow}>
           <Text style={[styles.bulletMark, { color: accentColor }]}>{"•"}</Text>
-          <Text style={styles.bulletText}>{bullet}</Text>
+          <Text style={[styles.bulletText, brandTextStyle(fontFamily, "regular")]}>{bullet}</Text>
         </View>
       ))}
     </View>
@@ -109,13 +120,14 @@ interface LayoutProps {
   height: number;
   accentColor: string;
   showWatermark?: boolean;
+  fontFamily?: BrandFontKey;
 }
 
 /** LinkedIn/Facebook: professional, left accent bar, stacked hook/title/subtitle/bullets. */
-function AccentBarLayout({ cardRef, slide, index, total, width, height, accentColor, showWatermark }: LayoutProps) {
+function AccentBarLayout({ cardRef, slide, index, total, width, height, accentColor, showWatermark, fontFamily }: LayoutProps) {
   const headingStyle: TextStyle = slide.hook
-    ? { fontSize: carouselTypeScale.hook, fontWeight: "700", color: carouselColors.text }
-    : { fontSize: carouselTypeScale.title, fontWeight: "700", color: carouselColors.text };
+    ? { fontSize: carouselTypeScale.hook, color: carouselColors.text, ...brandTextStyle(fontFamily, "bold") }
+    : { fontSize: carouselTypeScale.title, color: carouselColors.text, ...brandTextStyle(fontFamily, "bold") };
 
   return (
     <View
@@ -140,21 +152,22 @@ function AccentBarLayout({ cardRef, slide, index, total, width, height, accentCo
             emphasisWords={slide.emphasisWords}
             style={headingStyle}
             highlightColor={accentColor}
+            fontFamily={fontFamily}
           />
 
           {slide.hook ? (
-            <Text style={{ fontSize: carouselTypeScale.title, fontWeight: "600", color: carouselColors.text, marginTop: 12 }}>
+            <Text style={{ fontSize: carouselTypeScale.title, color: carouselColors.text, marginTop: 12, ...brandTextStyle(fontFamily, "medium") }}>
               {slide.title}
             </Text>
           ) : null}
 
           {slide.subtitle ? (
-            <Text style={{ fontSize: carouselTypeScale.subtitle, color: carouselColors.textMuted, marginTop: 8 }}>
+            <Text style={{ fontSize: carouselTypeScale.subtitle, color: carouselColors.textMuted, marginTop: 8, ...brandTextStyle(fontFamily, "regular") }}>
               {slide.subtitle}
             </Text>
           ) : null}
 
-          <Bullets bullets={slide.bulletPoints} accentColor={accentColor} />
+          <Bullets bullets={slide.bulletPoints} accentColor={accentColor} fontFamily={fontFamily} />
         </View>
 
         <PageIndicator index={index} total={total} style={styles.pageIndicatorRight} />
@@ -165,7 +178,7 @@ function AccentBarLayout({ cardRef, slide, index, total, width, height, accentCo
 }
 
 /** Instagram: centered, colorful — accent circle behind the hook, less text. */
-function CenteredLayout({ cardRef, slide, index, total, width, height, accentColor, showWatermark }: LayoutProps) {
+function CenteredLayout({ cardRef, slide, index, total, width, height, accentColor, showWatermark, fontFamily }: LayoutProps) {
   return (
     <View
       ref={cardRef}
@@ -187,15 +200,16 @@ function CenteredLayout({ cardRef, slide, index, total, width, height, accentCol
           <EmphasisText
             text={slide.hook || slide.title}
             emphasisWords={slide.emphasisWords}
-            style={{ fontSize: carouselTypeScale.title, fontWeight: "700", color: carouselColors.text, textAlign: "center" }}
+            style={{ fontSize: carouselTypeScale.title, color: carouselColors.text, textAlign: "center", ...brandTextStyle(fontFamily, "bold") }}
             highlightColor={accentColor}
+            fontFamily={fontFamily}
           />
           {slide.subtitle ? (
-            <Text style={{ fontSize: carouselTypeScale.subtitle, color: carouselColors.textMuted, marginTop: 10, textAlign: "center" }}>
+            <Text style={{ fontSize: carouselTypeScale.subtitle, color: carouselColors.textMuted, marginTop: 10, textAlign: "center", ...brandTextStyle(fontFamily, "regular") }}>
               {slide.subtitle}
             </Text>
           ) : null}
-          <Bullets bullets={slide.bulletPoints} accentColor={accentColor} align="center" />
+          <Bullets bullets={slide.bulletPoints} accentColor={accentColor} align="center" fontFamily={fontFamily} />
         </View>
 
         <PageIndicator index={index} total={total} />
@@ -207,7 +221,7 @@ function CenteredLayout({ cardRef, slide, index, total, width, height, accentCol
 
 /** X Threads: one punchy statement, centered, no bullets — bulletPoints are
  * already stripped by enforceTextDensity for this platform. */
-function StatementLayout({ cardRef, slide, index, total, width, height, accentColor, showWatermark }: LayoutProps) {
+function StatementLayout({ cardRef, slide, index, total, width, height, accentColor, showWatermark, fontFamily }: LayoutProps) {
   return (
     <View
       ref={cardRef}
@@ -218,11 +232,12 @@ function StatementLayout({ cardRef, slide, index, total, width, height, accentCo
         <EmphasisText
           text={slide.hook || slide.title}
           emphasisWords={slide.emphasisWords}
-          style={{ fontSize: carouselTypeScale.title, fontWeight: "700", color: carouselColors.text, textAlign: "center" }}
+          style={{ fontSize: carouselTypeScale.title, color: carouselColors.text, textAlign: "center", ...brandTextStyle(fontFamily, "bold") }}
           highlightColor={accentColor}
+          fontFamily={fontFamily}
         />
         {slide.subtitle ? (
-          <Text style={{ fontSize: carouselTypeScale.subtitle, color: carouselColors.textMuted, marginTop: 12, textAlign: "center" }}>
+          <Text style={{ fontSize: carouselTypeScale.subtitle, color: carouselColors.textMuted, marginTop: 12, textAlign: "center", ...brandTextStyle(fontFamily, "regular") }}>
             {slide.subtitle}
           </Text>
         ) : null}
@@ -235,7 +250,7 @@ function StatementLayout({ cardRef, slide, index, total, width, height, accentCo
 
 /** TikTok/Reels cover: bold single focal point, huge type, no subtitle/bullets
  * — both are already stripped by enforceTextDensity for this platform. */
-function FocalLayout({ cardRef, slide, index, total, width, height, accentColor, showWatermark }: LayoutProps) {
+function FocalLayout({ cardRef, slide, index, total, width, height, accentColor, showWatermark, fontFamily }: LayoutProps) {
   return (
     <View
       ref={cardRef}
@@ -246,8 +261,9 @@ function FocalLayout({ cardRef, slide, index, total, width, height, accentColor,
         <EmphasisText
           text={slide.hook || slide.title}
           emphasisWords={slide.emphasisWords}
-          style={{ fontSize: carouselTypeScale.hook * 1.3, fontWeight: "800", color: carouselColors.text, textAlign: "center" }}
+          style={{ fontSize: carouselTypeScale.hook * 1.3, color: carouselColors.text, textAlign: "center", ...(fontFamily ? brandTextStyle(fontFamily, "bold") : { fontWeight: "800" as const }) }}
           highlightColor={accentColor}
+          fontFamily={fontFamily}
         />
       </View>
       <PageIndicator index={index} total={total} style={styles.pageIndicatorRight} />
@@ -258,7 +274,7 @@ function FocalLayout({ cardRef, slide, index, total, width, height, accentColor,
 
 /** Pinterest: text-heavy top third (SEO-style title), decorative color block
  * filling the rest — stands in for the pin's image area. */
-function TopHeavyLayout({ cardRef, slide, index, total, width, height, accentColor, showWatermark }: LayoutProps) {
+function TopHeavyLayout({ cardRef, slide, index, total, width, height, accentColor, showWatermark, fontFamily }: LayoutProps) {
   const topHeight = height * 0.38;
   return (
     <View
@@ -275,11 +291,12 @@ function TopHeavyLayout({ cardRef, slide, index, total, width, height, accentCol
         <EmphasisText
           text={slide.title}
           emphasisWords={slide.emphasisWords}
-          style={{ fontSize: carouselTypeScale.title, fontWeight: "700", color: carouselColors.text, marginTop: 4 }}
+          style={{ fontSize: carouselTypeScale.title, color: carouselColors.text, marginTop: 4, ...brandTextStyle(fontFamily, "bold") }}
           highlightColor={accentColor}
+          fontFamily={fontFamily}
         />
         {slide.subtitle ? (
-          <Text style={{ fontSize: carouselTypeScale.subtitle, color: carouselColors.textMuted, marginTop: 6 }}>
+          <Text style={{ fontSize: carouselTypeScale.subtitle, color: carouselColors.textMuted, marginTop: 6, ...brandTextStyle(fontFamily, "regular") }}>
             {slide.subtitle}
           </Text>
         ) : null}
@@ -290,7 +307,7 @@ function TopHeavyLayout({ cardRef, slide, index, total, width, height, accentCol
           <Rect x={0} y={0} width={width} height={height - topHeight} fill={accentColor} opacity={0.08} />
         </Svg>
         <View style={{ flex: 1 }}>
-          <Bullets bullets={slide.bulletPoints} accentColor={accentColor} />
+          <Bullets bullets={slide.bulletPoints} accentColor={accentColor} fontFamily={fontFamily} />
         </View>
         <PageIndicator index={index} total={total} />
       </View>
@@ -307,17 +324,19 @@ export interface SlideCardProps {
   platform: CarouselPlatformKey;
   /** Gate 5: free-tier export watermark, omitted (or false) for Pro. */
   showWatermark?: boolean;
+  /** Gate 6: Pro-only brand font pack, omitted for the default system font. */
+  fontFamily?: BrandFontKey;
 }
 
 export const SlideCard = forwardRef<View, SlideCardProps>(function SlideCard(
-  { slide: rawSlide, index, total, width, platform, showWatermark },
+  { slide: rawSlide, index, total, width, platform, showWatermark, fontFamily },
   ref,
 ) {
   const { aspectRatio, layout } = carouselPlatforms[platform];
   const height = width / parseAspectRatio(aspectRatio);
   const slide = enforceTextDensity(rawSlide, platform);
   const accentColor = accentForCalloutType(slide.calloutType);
-  const layoutProps: LayoutProps = { cardRef: ref, slide, index, total, width, height, accentColor, showWatermark };
+  const layoutProps: LayoutProps = { cardRef: ref, slide, index, total, width, height, accentColor, showWatermark, fontFamily };
 
   switch (layout) {
     case "centered":

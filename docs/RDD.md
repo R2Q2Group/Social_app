@@ -108,11 +108,19 @@ Each gate has an explicit exit condition. Do not start a gate until the prior on
 exit condition is met — this keeps Claude Code sessions resumable without context loss.
 
 **Status as of 2026-08-11:** Gates 0 through 5 are done, including Gate 3.5
-(pulled forward). **Resume from Gate 6** (Polish & Export — high-res PDF
-export, custom brand fonts, batch export; Gate 5's paywall already lists
-the first two as "coming soon" Pro perks, so Gate 6 is what makes that copy
-true). Nothing is blocked; this is a plain session boundary, not an
-interrupted gate.
+(pulled forward). **Resume from Gate 6 verification** — all three Gate 6
+features (hi-res PDF export, custom brand fonts, batch export) are
+implemented and `npx tsc --noEmit` clean, but this session could not
+complete the end-to-end device verification Gates 0-5 all closed with: a
+native rebuild (`expo run:android`, required because `expo-font` is a new
+native module) ran for 1.5+ hours without finishing, and by the end of the
+session `adb` itself was timing out on plain commands like `adb devices` —
+the machine was resource-starved (emulator + Gradle + Metro's worker pool
+all contending), not a stuck/broken build. Next session: kill any leftover
+build process, confirm `adb devices` responds quickly before starting
+anything else, then re-run `expo run:android` from `apps/viziphy` and
+verify per the checklist at the end of the Gate 6 section below before
+marking its exit condition met.
 
 Practical notes for picking back up: local Supabase (`supabase start` in
 `packages/backend`) and each app's Metro dev server (`expo start
@@ -501,10 +509,99 @@ system, this must exist before Gate 4 starts, not after Gate 3 as originally sco
       after any Metro restart.
 
 ### Gate 6 — Polish & Export
-- [ ] High-res PDF export (carousels)
-- [ ] Custom brand fonts (Pro)
-- [ ] Batch export (all platforms from one draft in one action)
+- [x] High-res PDF export (carousels) — new
+      `apps/viziphy/src/export/HiResExporter.tsx` mounts every slide
+      off-screen (`position: absolute, left: -100000`, not `opacity: 0`, so
+      it's unambiguously outside the visible layout tree but still fully
+      measured/laid out for capture) at a fixed pixel width instead of
+      capturing the on-screen phone-width preview — `STANDARD_EXPORT_WIDTH`
+      (720px, free tier + batch export) and `HI_RES_EXPORT_WIDTH` (1440px,
+      Pro-only). Deliberately does *not* pass width/height to `captureRef`
+      itself — Gate 2 found that hangs indefinitely under Fabric because it
+      forces a relayout of the already on-screen source view; this instead
+      mounts a *new* view tree already laid out at the target width via
+      normal props, so `captureRef` never needs to resize anything.
+      `preview.tsx`'s `handleExportPdf` picks the width by
+      `getEntitlement()`'s tier and swaps the button label to "Export PDF
+      (Hi-res)" for Pro. Single-slide PNG export is unchanged (on-screen
+      capture, not in RDD's Gate 6 scope).
+- [x] Custom brand fonts (Pro) — `apps/viziphy/src/fonts.ts`: three bundled
+      Google Fonts packs (`@expo-google-fonts/{poppins,playfair-display,
+      space-grotesk}` + `expo-font`, loaded up front via `useBrandFonts()`
+      in `_layout.tsx`, which holds the app on a plain background View
+      until ready rather than flashing system-font text first). Threaded as
+      an optional `fontFamily` prop through `SlideCard.tsx`'s five layouts
+      and `EmphasisText`/`Bullets` via `brandTextStyle(brandFont, role)` —
+      resolves to a concrete static-weight family name (e.g.
+      `Poppins_700Bold`) instead of pairing a family with `fontWeight`,
+      since Google Fonts ships each weight as its own family and
+      RN/Fabric has no way to apply synthetic bold on top of one without
+      it looking wrong. `preview.tsx` adds a Pro-gated font-chip row
+      (locked chips + an "Upgrade" link for free accounts); selection
+      persists in AsyncStorage keyed `@r2q2/viziphy/brandFont` so it
+      survives a tier downgrade and is ready again on re-upgrade, but only
+      applies while `isPro` is true.
+- [x] Batch export (all platforms from one draft in one action) — new
+      `apps/viziphy/src/export/batch.ts`'s `buildBatchExportZip`: renders
+      all 6 platforms via `HiResExporter` (same off-screen mechanism as
+      above, at the tier-appropriate width), builds one multi-page PDF per
+      platform through the existing `buildCarouselPdf`, and zips them with
+      `jszip` (pure-JS, no native module — confirmed it doesn't pull in a
+      DOM/Node-only code path: `support.js`'s `Blob`/`self` probing is
+      guarded by try/catch and its one hard dependency, `readable-stream`,
+      is a real npm package Metro can resolve, not a Node builtin). Shared
+      as a single `.zip` via one `expo-sharing` share-sheet action.
+      Available to both tiers (free at `STANDARD_EXPORT_WIDTH`, Pro at
+      `HI_RES_EXPORT_WIDTH`) — RDD Section 5 doesn't list it as a Pro-only
+      perk, only hi-res export and brand fonts are.
+      Also addressed while touching this code path: Gate 3 documented that
+      looping `captureRef` calls can throw
+      `AssertionException: Expected to run on UI thread!` and hang under
+      Fabric. Reading `react-native-view-shot`'s Android source
+      (`ViewShot.java`) confirms why — `RNViewShotModule.captureRef`
+      resolves the view on the UI thread (inside Fabric's `addUIBlock`) but
+      then does the actual `view.draw(canvas)` on a separate
+      `Executors.newCachedThreadPool()` thread, off the UI thread by
+      construction; this is a library-level race, not something fixable by
+      changing call order from JS. `capture.ts`'s new
+      `captureSlidesSequentially` mitigates rather than eliminates it: each
+      capture waits for `InteractionManager.runAfterInteractions` plus one
+      more animation frame before firing (a quiet moment for Fabric's UI
+      thread) and gets one retry on failure. Whether this is sufficient in
+      practice was not confirmed this session — see the verification
+      checklist below.
 - **Exit condition:** export quality is App-Store-demo-ready.
+      **Not yet met — implementation complete, device verification
+      incomplete as of 2026-08-11.** `npx tsc --noEmit` is clean on
+      `apps/viziphy`. `expo-font` is a new native module, so exercising any
+      of the above requires a real native rebuild
+      (`npx expo run:android` from `apps/viziphy`), not just a JS/Metro
+      reload — that rebuild was started but did not finish this session
+      (see the Section 6 status note above for why: machine resource
+      contention, not a build failure). Next session should verify, in
+      order:
+      1. `adb devices` responds quickly (if not, something is still stuck —
+         investigate before proceeding, don't just retry into the same
+         contention).
+      2. Free-tier PDF export still works and looks like it did before this
+         gate (regression check on the now-off-screen-rendered path).
+      3. Pro PDF export produces a visibly sharper image at 2x the pixel
+         width of free tier — e.g. check the embedded image dimensions
+         inside the exported PDF, or eyeball zoomed-in text sharpness.
+      4. Font picker: locked/disabled for free accounts with an Upgrade
+         link; on Pro, selecting a pack visibly changes the on-screen
+         preview's typography (not just exports) across at least two
+         different layout variants (e.g. LinkedIn's `accentBar` and
+         Pinterest's `topHeavy`, since they style text differently).
+      5. Batch export produces a `.zip` (share sheet shows a `.zip`
+         mime-type target) containing exactly 6 PDFs, one per platform,
+         each opening correctly — and specifically confirm it doesn't hang
+         partway through, since that's the exact failure mode Gate 3
+         documented and this gate's `captureSlidesSequentially` change
+         targets without a prior confirmed fix.
+      6. `downgrade_to_free()` (Gate 5's dev-mock RPC) round-trips brand
+         font/hi-res gating correctly — i.e., re-check step 4's lock state
+         after a live downgrade, not just a fresh free account.
 
 ### Gate 7 — Beta Launch
 - [ ] TestFlight/internal Android build

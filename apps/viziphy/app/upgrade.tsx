@@ -4,12 +4,16 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { carouselColors, carouselTypeScale } from "@r2q2/design-tokens";
 import { cancelPro, getEntitlement, purchasePro, type Entitlement } from "@r2q2/account-client";
 
-const FREE_PERKS = ["3 AI generations / day", "Watermarked exports"];
+const FREE_PERKS = [
+  "3 AI generations / day",
+  "Watermarked exports",
+  "Batch export all platforms as one .zip",
+];
 const PRO_PERKS = [
   "Unlimited AI generations",
   "No watermark on exports",
-  "Hi-res PDF export (coming soon)",
-  "Custom brand fonts (coming soon)",
+  "Hi-res PDF export (incl. batch)",
+  "Custom brand fonts",
 ];
 
 export default function Upgrade() {

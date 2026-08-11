@@ -18,7 +18,8 @@
       "expo-router",
       "expo-dev-client",
       "expo-asset",
-      "./plugins/withKotlinGradlePluginVersion"
+      "./plugins/withKotlinGradlePluginVersion",
+      "expo-font"
     ]
   }
 }

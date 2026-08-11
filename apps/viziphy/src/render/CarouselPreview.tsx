@@ -12,6 +12,7 @@ import { carouselColors, carouselPlatforms, type CarouselPlatformKey } from "@r2
 import type { CarouselDraft } from "@r2q2/ai-core";
 import { SlideCard } from "./SlideCard";
 import { parseAspectRatio } from "./aspectRatio";
+import type { BrandFontKey } from "../fonts";
 
 const SLIDE_SIDE_PADDING = 24;
 const SLIDE_VERTICAL_PADDING = 16;
@@ -27,6 +28,8 @@ export interface CarouselPreviewProps {
   onActiveIndexChange?: (index: number) => void;
   /** Gate 5: free-tier export watermark, omitted (or false) for Pro. */
   showWatermark?: boolean;
+  /** Gate 6: Pro-only brand font pack, omitted for the default system font. */
+  fontFamily?: BrandFontKey;
 }
 
 export function CarouselPreview({
@@ -35,6 +38,7 @@ export function CarouselPreview({
   onSlideRef,
   onActiveIndexChange,
   showWatermark,
+  fontFamily,
 }: CarouselPreviewProps) {
   const { width: windowWidth } = useWindowDimensions();
   const [activeIndex, setActiveIndex] = useState(0);
@@ -103,6 +107,7 @@ export function CarouselPreview({
               width={slideWidth}
               platform={platform}
               showWatermark={showWatermark}
+              fontFamily={fontFamily}
             />
           </View>
         ))}
