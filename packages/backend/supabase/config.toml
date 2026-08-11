@@ -10,6 +10,9 @@ port = 54322
 [auth]
 enabled = true
 site_url = "http://localhost:3000"
+# Required for the Gate 1 identity decision (RDD.md Section 6, Gate 1) --
+# callers get an anonymous session before the Gate 3.5 account system exists.
+enable_anonymous_sign_ins = true
 
 [edge_runtime]
 enabled = true
