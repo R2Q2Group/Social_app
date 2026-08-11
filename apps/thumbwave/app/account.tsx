@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
-import { carouselColors, carouselTypeScale } from "@r2q2/design-tokens";
+import { thumbnailAppColors, thumbnailAppTypeScale } from "@r2q2/design-tokens";
 import {
   AlreadySignedInError,
   getAccountState,
@@ -165,7 +165,7 @@ export default function Account() {
           <TextInput
             style={styles.input}
             placeholder="Email"
-            placeholderTextColor={carouselColors.textMuted}
+            placeholderTextColor={thumbnailAppColors.textMuted}
             value={email}
             onChangeText={setEmail}
             autoCapitalize="none"
@@ -175,7 +175,7 @@ export default function Account() {
           <TextInput
             style={styles.input}
             placeholder="Password (min 6 characters)"
-            placeholderTextColor={carouselColors.textMuted}
+            placeholderTextColor={thumbnailAppColors.textMuted}
             value={password}
             onChangeText={setPassword}
             secureTextEntry
@@ -188,7 +188,7 @@ export default function Account() {
             disabled={!canSubmit}
           >
             {isLoading ? (
-              <ActivityIndicator color={carouselColors.background} />
+              <ActivityIndicator color={thumbnailAppColors.background} />
             ) : (
               <Text style={styles.buttonText}>
                 {mode === "signUp" ? "Create account" : "Sign in"}
@@ -207,7 +207,7 @@ export default function Account() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: carouselColors.background,
+    backgroundColor: thumbnailAppColors.background,
     padding: 24,
     justifyContent: "center",
   },
@@ -217,25 +217,25 @@ const styles = StyleSheet.create({
     left: 24,
   },
   backLinkText: {
-    color: carouselColors.textMuted,
-    fontSize: carouselTypeScale.body,
+    color: thumbnailAppColors.textMuted,
+    fontSize: thumbnailAppTypeScale.body,
   },
   title: {
-    fontSize: carouselTypeScale.hook,
+    fontSize: thumbnailAppTypeScale.hook,
     fontWeight: "700",
-    color: carouselColors.text,
+    color: thumbnailAppColors.text,
     marginBottom: 24,
   },
   statusBox: {
-    backgroundColor: carouselColors.surface,
+    backgroundColor: thumbnailAppColors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 24,
     gap: 4,
   },
   statusLine: {
-    color: carouselColors.text,
-    fontSize: carouselTypeScale.body,
+    color: thumbnailAppColors.text,
+    fontSize: thumbnailAppTypeScale.body,
   },
   modeRow: {
     flexDirection: "row",
@@ -246,31 +246,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: carouselColors.surface,
+    backgroundColor: thumbnailAppColors.surface,
   },
   modeChipActive: {
-    backgroundColor: carouselColors.accent,
+    backgroundColor: thumbnailAppColors.accent,
   },
   modeChipText: {
-    fontSize: carouselTypeScale.caption,
+    fontSize: thumbnailAppTypeScale.caption,
     fontWeight: "600",
-    color: carouselColors.textMuted,
+    color: thumbnailAppColors.textMuted,
   },
   modeChipTextActive: {
-    color: carouselColors.background,
+    color: thumbnailAppColors.background,
   },
   input: {
     minHeight: 48,
     borderRadius: 12,
-    backgroundColor: carouselColors.surface,
-    color: carouselColors.text,
-    fontSize: carouselTypeScale.body,
+    backgroundColor: thumbnailAppColors.surface,
+    color: thumbnailAppColors.text,
+    fontSize: thumbnailAppTypeScale.body,
     padding: 16,
     marginBottom: 12,
   },
   button: {
     marginTop: 12,
-    backgroundColor: carouselColors.accent,
+    backgroundColor: thumbnailAppColors.accent,
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: "center",
@@ -279,18 +279,18 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   buttonText: {
-    color: carouselColors.background,
-    fontSize: carouselTypeScale.body,
+    color: thumbnailAppColors.background,
+    fontSize: thumbnailAppTypeScale.body,
     fontWeight: "700",
   },
   message: {
-    color: carouselColors.statPositive,
-    fontSize: carouselTypeScale.body,
+    color: thumbnailAppColors.statPositive,
+    fontSize: thumbnailAppTypeScale.body,
     marginTop: 16,
   },
   error: {
-    color: carouselColors.statNegative,
-    fontSize: carouselTypeScale.body,
+    color: thumbnailAppColors.statNegative,
+    fontSize: thumbnailAppTypeScale.body,
     marginTop: 16,
   },
 });

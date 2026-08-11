@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { carouselColors, carouselTypeScale } from "@r2q2/design-tokens";
+import { thumbnailAppColors, thumbnailAppTypeScale } from "@r2q2/design-tokens";
 import { FreeTierLimitError, requestDraft } from "@r2q2/account-client";
 import { useDraft } from "../src/state/draftStore";
 
@@ -26,9 +26,9 @@ export default function Home() {
     setError(null);
     setIsLoading(true);
     try {
-      const { draft } = await requestDraft("carousel", idea.trim());
+      const { draft } = await requestDraft("thumbnail", idea.trim());
       setDraft(draft);
-      router.push("/preview");
+      router.push("/variants");
     } catch (err) {
       if (err instanceof FreeTierLimitError) {
         setError(err.message);
@@ -52,16 +52,16 @@ export default function Home() {
         <Text style={styles.accountLinkText}>Account</Text>
       </Pressable>
 
-      <Text style={styles.title}>Viziphy</Text>
+      <Text style={styles.title}>Thumbwave</Text>
       <Text style={styles.subtitle}>
-        Turn an idea into a carousel for LinkedIn, Instagram, X, TikTok,
-        Pinterest, or Facebook.
+        Turn a video idea or title into 2-3 exportable YouTube thumbnail
+        variants.
       </Text>
 
       <TextInput
         style={styles.input}
-        placeholder="What's your idea?"
-        placeholderTextColor={carouselColors.textMuted}
+        placeholder="What's the video about?"
+        placeholderTextColor={thumbnailAppColors.textMuted}
         value={idea}
         onChangeText={setIdea}
         multiline
@@ -76,9 +76,9 @@ export default function Home() {
         disabled={!canGenerate}
       >
         {isLoading ? (
-          <ActivityIndicator color={carouselColors.background} />
+          <ActivityIndicator color={thumbnailAppColors.background} />
         ) : (
-          <Text style={styles.buttonText}>Generate carousel</Text>
+          <Text style={styles.buttonText}>Generate thumbnails</Text>
         )}
       </Pressable>
     </KeyboardAvoidingView>
@@ -88,7 +88,7 @@ export default function Home() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: carouselColors.background,
+    backgroundColor: thumbnailAppColors.background,
     padding: 24,
     justifyContent: "center",
   },
@@ -98,37 +98,37 @@ const styles = StyleSheet.create({
     right: 24,
   },
   accountLinkText: {
-    color: carouselColors.textMuted,
-    fontSize: carouselTypeScale.body,
+    color: thumbnailAppColors.textMuted,
+    fontSize: thumbnailAppTypeScale.body,
   },
   title: {
-    fontSize: carouselTypeScale.hook,
+    fontSize: thumbnailAppTypeScale.hook,
     fontWeight: "700",
-    color: carouselColors.text,
+    color: thumbnailAppColors.text,
   },
   subtitle: {
-    fontSize: carouselTypeScale.subtitle,
-    color: carouselColors.textMuted,
+    fontSize: thumbnailAppTypeScale.body,
+    color: thumbnailAppColors.textMuted,
     marginTop: 8,
     marginBottom: 32,
   },
   input: {
     minHeight: 120,
     borderRadius: 12,
-    backgroundColor: carouselColors.surface,
-    color: carouselColors.text,
-    fontSize: carouselTypeScale.body,
+    backgroundColor: thumbnailAppColors.surface,
+    color: thumbnailAppColors.text,
+    fontSize: thumbnailAppTypeScale.body,
     padding: 16,
     textAlignVertical: "top",
   },
   error: {
-    color: carouselColors.statNegative,
-    fontSize: carouselTypeScale.body,
+    color: thumbnailAppColors.statNegative,
+    fontSize: thumbnailAppTypeScale.body,
     marginTop: 16,
   },
   button: {
     marginTop: 24,
-    backgroundColor: carouselColors.accent,
+    backgroundColor: thumbnailAppColors.accent,
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: "center",
@@ -137,8 +137,8 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   buttonText: {
-    color: carouselColors.background,
-    fontSize: carouselTypeScale.body,
+    color: thumbnailAppColors.background,
+    fontSize: thumbnailAppTypeScale.body,
     fontWeight: "700",
   },
 });

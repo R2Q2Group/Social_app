@@ -246,15 +246,80 @@ exit condition is met — this keeps Claude Code sessions resumable without cont
       patched here.
 
 ### Gate 4 — Thumbwave (standalone spinoff app)
-- [ ] Scaffold Thumbwave as its own app shell (`apps/thumbwave` package in the
+- [x] Scaffold Thumbwave as its own app shell (`apps/thumbwave` package in the
       monorepo — decided at Gate 0, see Section 7), sharing the R2Q2 backend/AI
-      core and account layer built in Gates 1 and 3.5
-- [ ] Thumbnail-specific design tokens + preset style library (distinct from Viziphy's)
-- [ ] Face-cutout upload/crop flow
-- [ ] Arrow/circle/emoji vector overlay system
-- [ ] A/B variant generation (2-3 per input)
-- **Exit condition:** idea/title in → 2-3 exportable 1280x720 thumbnail variants out,
-  running as a separate installable app from Viziphy.
+      core and account layer built in Gates 1 and 3.5 — config mirrors
+      `apps/viziphy` (babel/metro/tsconfig, `withKotlinGradlePluginVersion`
+      plugin, scoped Metro `watchFolders`), `com.r2q2group.thumbwave` /
+      scheme `thumbwave`. The Gate 1 drafting endpoint and thumbnail schema
+      already existed and needed zero backend changes — `mode: "thumbnail"`
+      was fully built and validated in Gate 1, just never exercised by a
+      real app until now. Sharing the account layer meant actually sharing
+      it: `apps/viziphy/src/lib/{supabase,session,auth,entitlement,
+      draftClient}.ts` were extracted into a new `packages/account-client`
+      package (`draftClient.ts`'s `requestCarouselDraft` generalized to
+      `requestDraft(mode, input)`, overloaded per mode for return-type
+      narrowing) rather than duplicated into Thumbwave — the whole point of
+      Gate 3.5 was one account system, not one copy-pasted per app.
+      Viziphy re-points at `@r2q2/account-client` with no behavior change.
+- [x] Thumbnail-specific design tokens + preset style library (distinct from
+      Viziphy's) — `thumbnailColors`/`thumbnailTypeScale`/`thumbnailCanvas`/
+      `thumbnailPresetStyles` already existed from Gate 0. Added
+      `thumbnailAppColors`/`thumbnailAppTypeScale` alongside them
+      (`packages/design-tokens/src/thumbnail.ts`) for Thumbwave's own
+      screens (input, variants, account) — `thumbnailColors` is
+      deliberately loud/high-saturation for the *exported thumbnail image*
+      per RDD Section 3.3, not meant for general app chrome; reusing it for
+      screen backgrounds would mean bright-yellow UI everywhere.
+- [x] Face-cutout upload/crop flow — `expo-image-picker` with
+      `allowsEditing`/`aspect: [1,1]` (native square crop, no custom crop
+      UI needed) feeding `ThumbnailCard`'s SVG `<ClipPath>` circle + stroked
+      ring. Matches RDD Section 3.2's "auto-crops/outlines it as a layered
+      vector asset" literally — no ML background removal, which is
+      explicitly out of scope there.
+- [x] Arrow/circle/emoji vector overlay system —
+      `src/render/overlays.tsx`: `overlayKindForCalloutShape` maps the
+      AI-generated free-form `calloutShape` string onto arrow/circle/emoji
+      via substring keywords (same pattern as `SlideCard.tsx`'s
+      `calloutType` → accent-color mapping from Gate 3), each rendered as
+      react-native-svg primitives (`Path`/`Circle`/`Text`).
+- [x] A/B variant generation (2-3 per input) — already returned by the Gate
+      1 `draft` endpoint in thumbnail mode (`schema.ts` requires 2-3
+      variants); `app/variants.tsx` adds the chip-based preview UI across
+      them, re-rendering the same drafted JSON per variant with no extra AI
+      call, mirroring Viziphy's platform-chip pattern from Gate 3.
+- **Exit condition met (2026-08-11):** verified end-to-end on the
+      `Medium_Phone_API_36.1` Android emulator against local Supabase, with
+      Thumbwave installed and running as a fully separate app
+      (`com.r2q2group.thumbwave`) alongside Viziphy
+      (`com.r2q2group.viziphy`): idea in → drafted → 3 rendered variants,
+      each with distinct headline/subhead/overlay (arrow on one, fire emoji
+      on the other two — circle wasn't hit by this draft's `calloutShape`
+      wording but shares the same code path as arrow, already proven) →
+      Export PNG produced a real rasterized thumbnail through the native
+      share sheet. Face-cutout's permission grant and native photo-picker
+      launch were confirmed working; completing a photo selection could not
+      be automated through the emulator's synthetic input in this session
+      (the system Photo Picker runs in its own surface that didn't respond
+      to scripted taps — an automation-tooling limitation, not exercised as
+      an app-code failure) — the render path (`SvgImage` + `ClipPath` +
+      stroked ring) is implemented and type-checked but not yet visually
+      confirmed with a real photo; worth a manual pass. Two real issues
+      found and fixed during verification:
+      1. Starting Thumbwave's dev client while Viziphy's Metro bundler was
+         still running on the shared default port 8081 didn't error —
+         Expo's CLI silently reused the already-running server, so
+         Thumbwave's dev client loaded *Viziphy's* JS bundle under its own
+         native shell (right `applicationId`, wrong app content) until that
+         Metro process was killed and restarted from `apps/thumbwave`.
+         Worth remembering when running two apps in this monorepo: only one
+         Expo dev server per port, and a stale one won't warn you it's
+         serving the wrong project.
+      2. The headline's SVG-text outline (`stroke` sized at 4.5% of font
+         size) was thick enough to visually overwhelm the dark `fill`,
+         reading as solid white-on-yellow instead of "outlined bold text"
+         per RDD Section 3.3. Reduced to 2%, restoring legible fill+outline
+         contrast.
 
 ### Gate 3.5 — Shared Account Layer (moved up from Gate 5)
 Because Thumbwave and Viziphy need to share one R2Q2 account/BYOK/subscription

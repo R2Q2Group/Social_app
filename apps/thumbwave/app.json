@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "Thumbwave",
+    "slug": "thumbwave",
+    "scheme": "thumbwave",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "com.r2q2group.thumbwave",
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "com.r2q2group.thumbwave"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-dev-client",
+      "expo-asset",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Thumbwave needs access to your photos to add a face cutout to a thumbnail."
+        }
+      ],
+      "./plugins/withKotlinGradlePluginVersion"
+    ]
+  }
+}

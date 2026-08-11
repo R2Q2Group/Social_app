@@ -1,4 +1,5 @@
-// Gate 3.5: the R2Q2 account layer. Every caller already has (or lazily
+// Gate 3.5: the R2Q2 account layer, shared by every app in the family
+// (Viziphy, Thumbwave from Gate 4). Every caller already has (or lazily
 // gets, via ensureAnonymousSession) an anonymous Supabase session per Gate
 // 1's identity model, so "signing up" here means upgrading that session in
 // place with auth.updateUser -- same user_id, so byok_keys/usage_daily/

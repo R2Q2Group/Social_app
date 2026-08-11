@@ -1,5 +1,5 @@
 import { FunctionsHttpError } from "@supabase/supabase-js";
-import type { CarouselDraft } from "@r2q2/ai-core";
+import type { CarouselDraft, Draft, ThumbnailDraft } from "@r2q2/ai-core";
 import { supabase } from "./supabase";
 import { ensureAnonymousSession } from "./session";
 
@@ -7,8 +7,8 @@ import { ensureAnonymousSession } from "./session";
  * UI can show RDD.md's BYOK upsell message instead of a generic error. */
 export class FreeTierLimitError extends Error {}
 
-export interface CarouselDraftResult {
-  draft: CarouselDraft;
+export interface DraftResult<T extends Draft> {
+  draft: T;
   usedByok: boolean;
 }
 
@@ -18,19 +18,28 @@ interface DraftFunctionErrorBody {
 }
 
 interface DraftFunctionSuccessBody {
-  draft: CarouselDraft;
+  draft: Draft;
   usedByok: boolean;
 }
 
-export async function requestCarouselDraft(
+export function requestDraft(
+  mode: "carousel",
   input: string,
-): Promise<CarouselDraftResult> {
+): Promise<DraftResult<CarouselDraft>>;
+export function requestDraft(
+  mode: "thumbnail",
+  input: string,
+): Promise<DraftResult<ThumbnailDraft>>;
+export async function requestDraft(
+  mode: "carousel" | "thumbnail",
+  input: string,
+): Promise<DraftResult<Draft>> {
   await ensureAnonymousSession();
 
   const { data, error } = await supabase.functions.invoke<
     DraftFunctionSuccessBody | DraftFunctionErrorBody
   >("draft", {
-    body: { mode: "carousel", input },
+    body: { mode, input },
   });
 
   if (error) {
