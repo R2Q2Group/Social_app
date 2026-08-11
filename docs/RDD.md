@@ -120,10 +120,20 @@ exit condition is met — this keeps Claude Code sessions resumable without cont
 - **Exit condition:** repo exists, pushes cleanly, RDD committed, stack decided.
 
 ### Gate 1 — AI Drafting Core
-- [ ] Backend endpoint: raw text/voice-transcript in → structured JSON out
-- [ ] Two prompt modes: carousel-breakdown, thumbnail-extraction
-- [ ] Free-tier rate limiting (3/day) + BYOK key storage (encrypted, user-provided)
+- [x] Backend endpoint: raw text/voice-transcript in → structured JSON out —
+      `packages/backend/supabase/functions/draft`
+- [x] Two prompt modes: carousel-breakdown, thumbnail-extraction —
+      `packages/ai-core/src/prompts.ts` + `client.ts` (forced Anthropic tool-use,
+      Claude 3.5 Haiku, hand-validated against `schema.ts`)
+- [x] Free-tier rate limiting (3/day) + BYOK key storage (encrypted, user-provided) —
+      `packages/backend/supabase/migrations/20260810000000_gate1_ai_core.sql`
+      (Supabase Vault for keys, `increment_usage`/`get_decrypted_byok_key` RPCs
+      restricted to the service role). Caller identity is a Supabase session,
+      anonymous included, so this works ahead of the Gate 3.5 account system —
+      an anonymous session upgrades to a real account later with no migration.
 - **Exit condition:** can POST an idea and receive valid structured JSON for both modes.
+      Code complete; not yet run end-to-end (no Docker in the dev sandbox — see
+      `packages/backend/README.md` for the local test steps to run yourself).
 
 ### Gate 2 — Carousel Renderer (MVP platform: pick one, e.g. LinkedIn)
 - [ ] Native vector slide renderer for one platform's aspect ratio + token set
