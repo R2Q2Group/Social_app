@@ -39,6 +39,27 @@ export async function buildBatchExportZip(
     zip.file(`${PLATFORM_FILE_NAMES[platform]}.pdf`, base64, { base64: true });
   }
 
+  // KNOWN BUG, unresolved as of Gate 6 (2026-08-11): the zip this produces
+  // is corrupt — its central directory offset points past the real header
+  // data (verified by hand: only the *last* entry's directory record was
+  // ever findable near the recorded offset; 7-Zip and .NET's ZipFile both
+  // refuse to open it, "Is not archive"). Confirmed via direct testing that
+  // this is NOT a read/write-mechanism issue: it reproduces identically
+  // across every combination of base64-string vs raw-Uint8Array on both the
+  // per-PDF input side (zip.file(..., {base64:true}) vs reading raw bytes)
+  // and the final zip's output side (this writeAsStringAsync/base64 path vs
+  // expo-file-system/next's File.write(Uint8Array)) — so the corruption
+  // happens inside zip.generateAsync() itself, not in how bytes get in or
+  // out. jszip encodes zip metadata (headers, offsets, CRCs) as "binary
+  // strings" (one JS string character = one byte, via String.fromCharCode)
+  // internally; the leading hypothesis is that something in this RN/Hermes
+  // runtime treats one of those binary strings as UTF-8 somewhere in
+  // jszip's worker pipeline, which would inflate byte counts exactly where
+  // offsets subsequently drift. Not confirmed further — doing so would mean
+  // instrumenting jszip's internals directly. A real fix likely means
+  // patching or replacing jszip (e.g. a native zip module) rather than
+  // anything on this call site; single-platform PDF export (buildCarouselPdf
+  // above) doesn't go through jszip at all and is unaffected.
   const zipBase64 = await zip.generateAsync({ type: "base64" });
   const zipUri = `${FileSystem.cacheDirectory}viziphy-carousel-export-${Date.now()}.zip`;
   await FileSystem.writeAsStringAsync(zipUri, zipBase64, {

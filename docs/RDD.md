@@ -107,20 +107,76 @@ DraftToDeck, Slideframe, Carouselly, Pinspire (Pinterest-focused), Threadcraft
 Each gate has an explicit exit condition. Do not start a gate until the prior one's
 exit condition is met — this keeps Claude Code sessions resumable without context loss.
 
-**Status as of 2026-08-11:** Gates 0 through 5 are done, including Gate 3.5
-(pulled forward). **Resume from Gate 6 verification** — all three Gate 6
-features (hi-res PDF export, custom brand fonts, batch export) are
-implemented and `npx tsc --noEmit` clean, but this session could not
-complete the end-to-end device verification Gates 0-5 all closed with: a
-native rebuild (`expo run:android`, required because `expo-font` is a new
-native module) ran for 1.5+ hours without finishing, and by the end of the
-session `adb` itself was timing out on plain commands like `adb devices` —
-the machine was resource-starved (emulator + Gradle + Metro's worker pool
-all contending), not a stuck/broken build. Next session: kill any leftover
-build process, confirm `adb devices` responds quickly before starting
-anything else, then re-run `expo run:android` from `apps/viziphy` and
-verify per the checklist at the end of the Gate 6 section below before
-marking its exit condition met.
+**Status as of 2026-08-11 (evening session):** Gates 0 through 5 are done,
+including Gate 3.5 (pulled forward). **Gate 6 is implementation-complete and
+device-verified end-to-end, except batch export** — five of the six exit
+checklist items passed cleanly; batch export completes without hanging but
+produces a corrupt `.zip` (see its own entry below). Two real bugs were
+found and fixed during verification; one real bug was found, diagnosed, and
+is documented but not fixed (jszip). Highlights, in the order they came up:
+
+1. **The previous session's stuck build was exactly what it looked like —
+   machine resource contention, not a broken build — but recovering from it
+   surfaced a second trap.** Killing the runaway `adb`/`expo run:android`
+   processes and confirming `adb devices` responded quickly (per the prior
+   note) was sufficient to get `expo run:android` to build and install
+   cleanly (`BUILD SUCCESSFUL in 3m 18s`). But the app then ANR'd
+   (`failed to complete startup`) on every launch attempt, repeatedly, even
+   after the host's other heavy processes were closed — because the
+   *emulator itself* had a stuck `android.hardware.sensors-service.multihal`
+   process burning 50-70% CPU continuously (visible via `adb shell top`,
+   25+ minutes of accumulated CPU time), unrelated to anything on the host.
+   A plain `adb emu kill` + relaunch of the *same* AVD didn't fix it either
+   — Android Studio's emulator defaults to quick-boot, so killing and
+   relaunching **restored the exact same stuck-process snapshot** instead of
+   cold-booting (confirmed by `kswapd0`/`sensors-service` already showing
+   10+ minutes of CPU time seconds after the "fresh" instance reported
+   booted). The fix: launch with `-no-snapshot-load` for a genuine cold
+   boot. Worth remembering for any future session that hits ANRs a restart
+   doesn't fix — check whether the restart actually cold-booted.
+2. **`HiResExporter.tsx` had a real ref-collection race** that made *every*
+   off-screen capture (hi-res PDF export, and batch export's per-platform
+   captures) fail with "Slide 1 isn't rendered yet" on the very first
+   attempt post-rebuild. Root-caused via targeted `console.log` +
+   `adb logcat`, not guesswork: a `useEffect` reset `refs.current = new
+   Map()` on every mount (including the initial one, since effects always
+   fire once after first render) — that passive effect ran a couple
+   milliseconds *after* `onReady` had already fired and handed the `getRef`
+   closure to the caller, wiping every just-collected ref before
+   `captureSlidesSequentially` could read them. Fixed by deleting the
+   effect entirely — `HiResExporter` fully unmounts and remounts fresh on
+   every export call already (`{pendingExport ? <HiResExporter/> : null}`),
+   so `useRef(new Map())`'s own fresh instance per mount was always
+   sufficient; the effect was redundant *and* actively harmful. Confirmed
+   fixed: hi-res PDF export, free-tier PDF export, and (with more RAM, see
+   below) batch export all subsequently produced real output.
+3. **Pro hi-res export is genuinely 2x, precisely** — pulled both a
+   free-tier and a Pro-tier PDF off the device and diffed their embedded
+   image dimensions directly: 1890×2363 vs. 3780×4725. Exactly 2.0x in both
+   axes, matching `HI_RES_EXPORT_WIDTH`/`STANDARD_EXPORT_WIDTH`.
+4. **Batch export's off-screen hi-res captures can exhaust a low-RAM
+   emulator.** Running batch export at Pro/hi-res (6 platforms × 7 slides ×
+   1440px, all mounted off-screen simultaneously via `HiResExporter`) on the
+   AVD's default 2GB RAM drove the whole guest OS into severe swap
+   thrashing — `kswapd0` pegged at 100%+ CPU, swap 100% full, `MemAvailable`
+   reported as 0kB, binder transactions taking 24-34 *seconds*, `adbd`
+   itself timing out — with no forward progress after 4+ minutes. This
+   wasn't the app hanging; the entire system was starved. Relaunching the
+   emulator with `-memory 4096` resolved it completely (batch export then
+   completed in ~90s with `MemAvailable` staying above 1GB throughout). Real
+   Android devices typically ship well above 2GB RAM, so this is likely a
+   low-end-emulator artifact rather than a real-device risk, but it's worth
+   a real low-RAM-device pass before shipping batch export, since mounting
+   all 6 platforms' hi-res slides at once is a genuinely heavy approach.
+5. **Batch export's `.zip` output is corrupt — a real, unresolved bug.**
+   Once the ref-race (bug #2) and the memory ceiling (bug #4) were both out
+   of the way, batch export reliably completes and offers a `.zip` through
+   the share sheet — but the file itself doesn't open. See the dedicated
+   note under Gate 6's batch-export bullet and the code comment in
+   `apps/viziphy/src/export/batch.ts` for the full diagnosis; the short
+   version is that it's inside `jszip`'s own `generateAsync()`, confirmed
+   independent of every read/write encoding choice on this call site, and
+   likely needs a different zip library rather than a fix here.
 
 Practical notes for picking back up: local Supabase (`supabase start` in
 `packages/backend`) and each app's Metro dev server (`expo start
@@ -525,6 +581,19 @@ system, this must exist before Gate 4 starts, not after Gate 3 as originally sco
       `getEntitlement()`'s tier and swaps the button label to "Export PDF
       (Hi-res)" for Pro. Single-slide PNG export is unchanged (on-screen
       capture, not in RDD's Gate 6 scope).
+      **Verified end-to-end (2026-08-11):** free-tier and Pro PDF export
+      both produce real, valid multi-page PDFs on-device — pulled both off
+      the device and diffed their embedded image dimensions directly:
+      1890×2363 (free) vs. 3780×4725 (Pro), exactly 2.0x in both axes. One
+      real bug found and fixed first: every off-screen capture initially
+      failed with "Slide 1 isn't rendered yet" — `HiResExporter`'s
+      `useEffect` reset `refs.current = new Map()` on mount, which (being a
+      passive effect) ran a couple milliseconds *after* `onReady` had
+      already handed the just-collected refs to the caller, wiping them
+      before they could be read. Fixed by deleting the effect — the
+      component fully unmounts/remounts per export call already, so
+      `useRef(new Map())`'s fresh instance per mount made the effect both
+      redundant and actively harmful.
 - [x] Custom brand fonts (Pro) — `apps/viziphy/src/fonts.ts`: three bundled
       Google Fonts packs (`@expo-google-fonts/{poppins,playfair-display,
       space-grotesk}` + `expo-font`, loaded up front via `useBrandFonts()`
@@ -541,7 +610,18 @@ system, this must exist before Gate 4 starts, not after Gate 3 as originally sco
       persists in AsyncStorage keyed `@r2q2/viziphy/brandFont` so it
       survives a tier downgrade and is ready again on re-upgrade, but only
       applies while `isPro` is true.
-- [x] Batch export (all platforms from one draft in one action) — new
+      **Verified end-to-end (2026-08-11):** on Pro, selecting "Editorial
+      Serif" visibly changed the on-screen preview's typography (not just
+      exports) across two different layout variants — LinkedIn's
+      `accentBar` and Pinterest's `topHeavy` — and the selection persisted
+      across a platform-chip switch. On free tier, all four font chips
+      render `disabled` (confirmed via `enabled="false"` in the
+      accessibility tree) and the "Brand fonts are a Pro perk — Upgrade"
+      hint is present and tappable. Round-tripped a live Pro→free→Pro
+      downgrade/upgrade (via Gate 5's `downgrade_to_free()`/
+      `upgrade_to_pro()` dev-mock RPCs) and re-confirmed the lock state
+      flips correctly both directions, not just on a fresh free account.
+- [ ] Batch export (all platforms from one draft in one action) — new
       `apps/viziphy/src/export/batch.ts`'s `buildBatchExportZip`: renders
       all 6 platforms via `HiResExporter` (same off-screen mechanism as
       above, at the tier-appropriate width), builds one multi-page PDF per
@@ -567,41 +647,71 @@ system, this must exist before Gate 4 starts, not after Gate 3 as originally sco
       `captureSlidesSequentially` mitigates rather than eliminates it: each
       capture waits for `InteractionManager.runAfterInteractions` plus one
       more animation frame before firing (a quiet moment for Fabric's UI
-      thread) and gets one retry on failure. Whether this is sufficient in
-      practice was not confirmed this session — see the verification
-      checklist below.
+      thread) and gets one retry on failure. **Confirmed sufficient
+      (2026-08-11):** the underlying `AssertionException` race still fires
+      intermittently during a real 42-capture batch run (visible in
+      `adb logcat`), but every occurrence recovered on retry — batch export
+      completed without hanging in every attempt this session, on both a
+      2GB and a 4GB-RAM emulator.
+      **Not working — confirmed unresolved bug (2026-08-11):** the produced
+      `.zip` is corrupt. It shares successfully through the native share
+      sheet (a real file, plausible size, correct name) but neither 7-Zip
+      nor .NET's `ZipFile` can open it — "Is not archive." Diagnosed by
+      hand: the End-Of-Central-Directory record's recorded central-directory
+      offset points at a run of zero bytes, not a real header, and scanning
+      backward from the EOCD finds only *one* valid directory-entry
+      signature (the last file's) where six are expected — several KB of
+      data is unaccounted for relative to jszip's own offset bookkeeping.
+      Systematically ruled out every read/write encoding combination on
+      this call site (base64-string vs. raw-`Uint8Array`, on both the
+      per-PDF input side and the final zip's output side, using
+      `expo-file-system`'s classic API and its newer `File`
+      read-bytes/write-bytes API) — the corruption reproduced identically
+      every time, which places the fault inside `zip.generateAsync()`
+      itself, not in how bytes get in or out of it. Leading hypothesis
+      (documented in code at `apps/viziphy/src/export/batch.ts`, not
+      confirmed further): jszip encodes zip metadata internally as "binary
+      strings" (one JS string character = one byte via
+      `String.fromCharCode`), a pattern that corrupts if anything in the
+      pipeline treats one of those strings as UTF-8 — plausible under
+      Hermes/RN in a way it wouldn't be in jszip's native
+      browser/Node.js test environments. A real fix likely means patching
+      or replacing jszip (e.g. a native zip module, which would need its
+      own native rebuild) rather than anything at this call site.
+      Single-platform PDF export (`buildCarouselPdf`, used directly by
+      `handleExportPdf` above) doesn't go through jszip and is unaffected —
+      this bug is isolated to the batch/zip path.
 - **Exit condition:** export quality is App-Store-demo-ready.
-      **Not yet met — implementation complete, device verification
-      incomplete as of 2026-08-11.** `npx tsc --noEmit` is clean on
-      `apps/viziphy`. `expo-font` is a new native module, so exercising any
-      of the above requires a real native rebuild
-      (`npx expo run:android` from `apps/viziphy`), not just a JS/Metro
-      reload — that rebuild was started but did not finish this session
-      (see the Section 6 status note above for why: machine resource
-      contention, not a build failure). Next session should verify, in
-      order:
-      1. `adb devices` responds quickly (if not, something is still stuck —
-         investigate before proceeding, don't just retry into the same
-         contention).
-      2. Free-tier PDF export still works and looks like it did before this
-         gate (regression check on the now-off-screen-rendered path).
-      3. Pro PDF export produces a visibly sharper image at 2x the pixel
-         width of free tier — e.g. check the embedded image dimensions
-         inside the exported PDF, or eyeball zoomed-in text sharpness.
-      4. Font picker: locked/disabled for free accounts with an Upgrade
-         link; on Pro, selecting a pack visibly changes the on-screen
-         preview's typography (not just exports) across at least two
-         different layout variants (e.g. LinkedIn's `accentBar` and
-         Pinterest's `topHeavy`, since they style text differently).
-      5. Batch export produces a `.zip` (share sheet shows a `.zip`
-         mime-type target) containing exactly 6 PDFs, one per platform,
-         each opening correctly — and specifically confirm it doesn't hang
-         partway through, since that's the exact failure mode Gate 3
-         documented and this gate's `captureSlidesSequentially` change
-         targets without a prior confirmed fix.
-      6. `downgrade_to_free()` (Gate 5's dev-mock RPC) round-trips brand
-         font/hi-res gating correctly — i.e., re-check step 4's lock state
-         after a live downgrade, not just a fresh free account.
+      **Not yet met — batch export is broken.** `npx tsc --noEmit` is clean
+      on `apps/viziphy`. Device verification is otherwise complete
+      (2026-08-11) — 5 of 6 checklist items below passed:
+      1. [x] `adb devices` responds quickly — root cause of the prior
+         session's stuck build confirmed as machine resource contention;
+         recovering from it also surfaced a quick-boot-snapshot trap (see
+         the Section 6 status note above).
+      2. [x] Free-tier PDF export works and regressed cleanly onto the new
+         off-screen-rendered path.
+      3. [x] Pro PDF export is precisely 2x free tier's pixel width,
+         confirmed by diffing embedded image dimensions (1890×2363 vs.
+         3780×4725).
+      4. [x] Font picker locks correctly for free, unlocks and visibly
+         changes on-screen typography for Pro, across two layout variants.
+      5. [ ] **Batch export produces a `.zip`, and doesn't hang — but the
+         `.zip` itself is corrupt and won't open in 7-Zip or .NET's
+         `ZipFile`.** Not a regression of Gate 3's documented hang risk
+         (`captureSlidesSequentially`'s retry logic is confirmed sufficient
+         for that); a distinct, newly-found bug inside `jszip`. Full
+         diagnosis in this gate's batch-export bullet above and in code at
+         `apps/viziphy/src/export/batch.ts`. This is the one item blocking
+         Gate 6's exit condition.
+      6. [x] `downgrade_to_free()`/`upgrade_to_pro()` round-trip brand
+         font/hi-res gating correctly through a live tier change, not just
+         on a fresh account.
+      **Next session:** fix or replace the zip layer for batch export (see
+      the diagnosis — likely swapping `jszip` for a native zip module,
+      which will need its own `expo run:android` rebuild), then re-run just
+      checklist item 5 to close out this gate. Everything else above is
+      confirmed and shouldn't need re-verification unless touched again.
 
 ### Gate 7 — Beta Launch
 - [ ] TestFlight/internal Android build
@@ -614,6 +724,14 @@ system, this must exist before Gate 4 starts, not after Gate 3 as originally sco
 - [ ] Consider thumbnail engine as standalone sibling app ("Thumbwave") if usage
       data shows it warrants separate positioning
 - **Exit condition:** ongoing — informs v2 roadmap.
+
+### Ideas noted, not yet scheduled
+Raised mid-session on 2026-08-11; not implemented, not assigned to a gate yet.
+- After a user upgrades to Pro from the Upgrade screen, add a "Get started"
+  CTA that jumps straight into content creation, instead of requiring a
+  manual back-out to wherever they were before upgrading.
+- A Wi-Fi-only option for auto-generation/export, so large exports (batch
+  export in particular) don't burn mobile data by default.
 
 ---
 

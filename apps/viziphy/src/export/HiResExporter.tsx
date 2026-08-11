@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import { StyleSheet, View } from "react-native";
 import type { CarouselPlatformKey } from "@r2q2/design-tokens";
 import type { CarouselDraft } from "@r2q2/ai-core";
@@ -48,13 +48,16 @@ export function HiResExporter({
   showWatermark,
   onReady,
 }: HiResExporterProps) {
+  // A fresh Map per mount is all that's needed — the caller
+  // (preview.tsx/batch export) always unmounts this component between
+  // requests via `{pendingExport ? <HiResExporter ... /> : null}`, so a new
+  // instance (and thus a fresh `useRef`) is created per export. A
+  // `useEffect`-based reset here previously raced the ref-collection: passive
+  // effects run shortly *after* commit, so it could (and reliably did) wipe
+  // every just-attached ref out from under `onReady`'s consumer before
+  // `getRef` was ever called, making every capture fail with a null ref.
   const refs = useRef(new Map<string, View | null>());
   const reportedRef = useRef(false);
-
-  useEffect(() => {
-    reportedRef.current = false;
-    refs.current = new Map();
-  }, [draft, platforms, targetWidth]);
 
   const expectedCount = platforms.reduce(
     (sum, platform) => sum + draft.slides.length,
