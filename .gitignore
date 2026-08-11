@@ -14,6 +14,14 @@ build/
 packages/backend/supabase/.temp/
 packages/backend/supabase/.branches/
 
+# Generated mirror of packages/ai-core/src -- see packages/backend/scripts/sync-shared.js
+packages/backend/supabase/functions/_shared/
+
+# Expo prebuild output -- regenerated via `expo prebuild`; config plugins
+# under apps/*/plugins/ are what make native config changes survive that.
+apps/*/android/
+apps/*/ios/
+
 # OS / editor
 .DS_Store
 Thumbs.db

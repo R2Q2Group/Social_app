@@ -2,6 +2,10 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
+    // @r2q2/ai-core's source uses explicit .ts extensions on relative
+    // imports (required by the Deno edge runtime it's also consumed by —
+    // see packages/ai-core/src). noEmit is already set via expo/tsconfig.base.
+    "allowImportingTsExtensions": true,
     "paths": {
       "@r2q2/ai-core": ["../../packages/ai-core/src"],
       "@r2q2/design-tokens": ["../../packages/design-tokens/src"]

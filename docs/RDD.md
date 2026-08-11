@@ -143,10 +143,54 @@ exit condition is met — this keeps Claude Code sessions resumable without cont
          replacement, `claude-haiku-4-5`.
 
 ### Gate 2 — Carousel Renderer (MVP platform: pick one, e.g. LinkedIn)
-- [ ] Native vector slide renderer for one platform's aspect ratio + token set
-- [ ] Render structured JSON → swipeable slide preview in-app
-- [ ] Export single platform as PNG/PDF
-- **Exit condition:** idea → drafted → rendered → exported, one platform, end to end.
+- [x] Native vector slide renderer for one platform's aspect ratio + token set —
+      `apps/viziphy/src/render/LinkedInSlideCard.tsx`: `react-native-svg` for
+      decorative shapes (accent bar) + RN `<Text>` for content (auto-wrap, no
+      font asset needed) over `carouselColors`/`carouselTypeScale`/
+      `carouselPlatforms.linkedin`. Skia stays unused for Gate 2 — reserved
+      for Gate 3/4's raster/cutout needs.
+- [x] Render structured JSON → swipeable slide preview in-app —
+      `apps/viziphy/src/render/CarouselPreview.tsx` (paging `ScrollView`,
+      dot indicator), wired through `app/index.tsx` (idea input →
+      `requestCarouselDraft`) and `app/preview.tsx`.
+- [x] Export single platform as PNG/PDF — `apps/viziphy/src/export/`:
+      `capture.ts` (`react-native-view-shot`), `pdf.ts` (`expo-print`,
+      one page per slide at the 4:5 ratio), `share.ts` (`expo-sharing`).
+- **Exit condition met (2026-08-11):** verified end-to-end on the
+      `Medium_Phone_API_36.1` Android emulator against local Supabase —
+      idea → drafted → rendered (swipeable 8-9 slide carousel) → exported
+      (PNG share sheet showing the rendered slide; PDF share sheet showing
+      a generated multi-page file). Notable fixes made along the way:
+      - `apps/viziphy` had no `babel.config.js`/`metro.config.js` — added
+        both (Metro's `watchFolders` scoped to `packages/ai-core` +
+        `packages/design-tokens` specifically, *not* the monorepo root,
+        which was otherwise crawling the ~1000-package root
+        `node_modules` and making every cold bundle time out client-side).
+      - `react-native-svg`/`react-native-screens`/
+        `react-native-safe-area-context`/`babel-preset-expo` all floated to
+        versions well past what Expo SDK 52 bundles (via unpinned ranges or
+        `expo-router`'s `"*"` peer deps) and broke the native build or the
+        JS bundle; pinned via root `package.json` `overrides` plus exact
+        versions in `apps/viziphy/package.json`.
+      - Generated `android/build.gradle`'s Kotlin Gradle plugin classpath
+        had no version, resolving out of sync with the Compose compiler
+        version `expo-modules-core` picks — fixed permanently via an Expo
+        config plugin (`apps/viziphy/plugins/withKotlinGradlePluginVersion.js`)
+        so it survives `expo prebuild --clean`.
+      - Local Supabase's Edge Function containers sandbox their bind mount
+        to `supabase/functions` only — `draft`'s import of
+        `@r2q2/ai-core` (a sibling package) can't resolve inside Docker.
+        Fixed with the standard Supabase pattern: a generated
+        `supabase/functions/_shared/ai-core` mirror
+        (`packages/backend/scripts/sync-shared.js`, run via `predev`/
+        `predeploy`), imported instead of the package directly.
+        `packages/ai-core/src` remains the single source of truth.
+      - `react-native-view-shot`'s `captureRef` hung indefinitely under
+        Fabric/new-architecture when given an explicit `width`/`height`
+        override (to target a fixed export resolution independent of
+        on-screen size) — `apps/viziphy/src/export/capture.ts` captures at
+        on-screen size instead, wrapped in a client-side timeout as a
+        defensive fallback.
 
 ### Gate 3 — Multi-Platform Carousel Expansion
 - [ ] Add remaining platform render targets from Section 4 (one at a time)

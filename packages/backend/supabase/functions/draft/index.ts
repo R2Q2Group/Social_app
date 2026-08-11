@@ -3,11 +3,15 @@
 // decision #2). BYOK callers skip the free-tier limit entirely; everyone
 // else is capped at FREE_TIER_DAILY_LIMIT/day via increment_usage().
 import { createClient } from "npm:@supabase/supabase-js@2.45.0";
+// Local mirror of packages/ai-core/src, not the package itself: the local
+// Edge Runtime container's bind mount is sandboxed to supabase/functions, so
+// it can't see anything outside that tree. Kept in sync via `npm run
+// sync-shared` (see package.json) -- do not hand-edit files under _shared/.
 import {
   DraftGenerationError,
   generateDraft,
   type Draft,
-} from "../../../../ai-core/src/index.ts";
+} from "../_shared/ai-core/index.ts";
 
 const FREE_TIER_DAILY_LIMIT = 3;
 

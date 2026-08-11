@@ -16,7 +16,9 @@
     },
     "plugins": [
       "expo-router",
-      "expo-dev-client"
+      "expo-dev-client",
+      "expo-asset",
+      "./plugins/withKotlinGradlePluginVersion"
     ]
   }
 }

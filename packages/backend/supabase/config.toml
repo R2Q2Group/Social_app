@@ -16,3 +16,8 @@ enable_anonymous_sign_ins = true
 
 [edge_runtime]
 enabled = true
+
+[analytics]
+# Local Studio log viewer only; requires the Docker daemon exposed on a TCP
+# port, which we don't enable. Not needed to exercise the draft endpoint.
+enabled = false

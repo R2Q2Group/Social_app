@@ -12,14 +12,22 @@ to spin up Postgres/Auth/Storage/Edge Runtime containers).
 
 ## Gate 1: testing the `draft` endpoint
 
-1. `supabase start` (applies `supabase/migrations/` automatically), or run
+1. `npm run sync-shared` — mirrors `packages/ai-core/src` into
+   `supabase/functions/_shared/ai-core`. The local Edge Function container's
+   bind mount is sandboxed to `supabase/functions`, so functions that import
+   `@r2q2/ai-core` can't reach the real package; they import this generated
+   mirror instead (`packages/ai-core/src` stays the source of truth — re-run
+   this after changing it). `npm run dev`/`npm run deploy` do this
+   automatically via `predev`/`predeploy`; run it manually first if calling
+   `supabase` directly as in the steps below.
+2. `supabase start` (applies `supabase/migrations/` automatically), or run
    against a linked hosted project with `supabase db push`.
-2. Copy `supabase/functions/.env.example` to `supabase/functions/.env`, fill in
+3. Copy `supabase/functions/.env.example` to `supabase/functions/.env`, fill in
    the printed `anon`/`service_role` keys from `supabase start` output, and set
    `ANTHROPIC_API_KEY` to a real Anthropic key (backend free-tier key — a BYOK
    caller never needs this one set).
-3. `supabase functions serve draft --env-file supabase/functions/.env`
-4. Get an anonymous session JWT (the app does this automatically via
+4. `supabase functions serve draft --env-file supabase/functions/.env`
+5. Get an anonymous session JWT (the app does this automatically via
    `supabase.auth.signInAnonymously()`; from a shell you can call the Auth API
    directly):
 
@@ -30,7 +38,7 @@ to spin up Postgres/Auth/Storage/Edge Runtime containers).
      -d '{}' | jq -r .access_token
    ```
 
-5. POST an idea:
+6. POST an idea:
 
    ```sh
    curl -s -X POST http://127.0.0.1:54321/functions/v1/draft \

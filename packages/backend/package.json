@@ -3,7 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "sync-shared": "node scripts/sync-shared.js",
+    "predev": "npm run sync-shared",
     "dev": "supabase start",
+    "predeploy": "npm run sync-shared",
     "deploy": "supabase functions deploy"
   },
   "devDependencies": {
