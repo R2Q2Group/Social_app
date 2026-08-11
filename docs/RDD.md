@@ -803,12 +803,83 @@ system, this must exist before Gate 4 starts, not after Gate 3 as originally sco
       bundle. Reinstalled the debug/dev-client build afterward so the
       emulator was left in its normal dev-ready state, not stuck on the
       release build.
+      **Real-device confirmed (2026-08-11), after fixing a real chain of
+      networking issues once off the emulator:** the emulator build pointed
+      at `10.0.2.2:54321`, the Android emulator's special host-loopback
+      alias, which means nothing on a real phone. Getting the same install
+      working on the user's actual Android phone over their home WiFi
+      surfaced four distinct, independently-diagnosed blockers, in the
+      order hit:
+      1. Rebuilt with `EXPO_PUBLIC_SUPABASE_URL` pointed at the PC's real
+         LAN IP (`192.168.0.108:54321`) instead of `10.0.2.2`. Confirmed
+         local Supabase's Kong gateway is Docker-bound to `0.0.0.0:54321`
+         (reachable in principle), not just loopback.
+      2. Windows had the PC's Ethernet connection classified as a
+         **Public** network, and separately had no firewall rule for port
+         54321 on either profile — both blocked the phone's inbound
+         connection outright, with the app reporting a generic "Network
+         request failed" and nothing reaching Kong's logs at all. Switching
+         the connection to **Private** in Windows Settings and adding an
+         explicit `New-NetFirewallRule` for TCP 54321 (needs an elevated
+         PowerShell — this session has no admin rights on the user's
+         machine) were both required; neither alone was sufficient.
+      3. Even after that, the app still failed identically. **NordVPN was
+         running and blocking it** — confirmed by having the user test
+         `http://192.168.0.108:54321/` directly in the phone's browser
+         (got Kong's real "no route matched" response, proving raw
+         connectivity) only *after* killing NordVPN's processes; before
+         that, even the plain browser request never reached Kong. VPN
+         clients' own firewall/kill-switch layers sit outside Windows
+         Firewall entirely, so this wasn't discoverable from the Windows
+         side alone.
+      4. With raw connectivity finally proven, the app's own fetch calls
+         *still* failed with "Network request failed", while the phone's
+         browser worked fine against the same URL — and no request ever
+         reached Kong's logs. Root cause: Android has blocked cleartext
+         (`http://`, non-HTTPS) network requests from apps by default since
+         API 28, unlike browsers; this app's manifest had no
+         `usesCleartextTraffic` override, and release builds don't inherit
+         whatever allowance debug builds might get. First fix attempt used
+         the official `expo-build-properties` plugin
+         (`android.usesCleartextTraffic: true`), which worked for the
+         manifest flag but installing it shifted transitive dependency
+         versions enough to break `expo-dev-menu`'s release-variant Kotlin
+         compile after a clean `expo prebuild` (`Unresolved reference:
+         core`/`Manifest` in `DevMenuManager.kt`) — a real, reproduced
+         regression, not a fluke (confirmed by fully reverting the
+         dependency and rebuilding clean). Replaced it with a small local
+         config plugin instead, `apps/viziphy/plugins/withCleartextTraffic.js`
+         (same pattern as Gate 2's `withKotlinGradlePluginVersion`), which
+         sets the manifest attribute directly via
+         `withAndroidManifest` with zero new dependencies — verified the
+         dependency tree returned to the exact previously-working baseline
+         (`git diff` on `package-lock.json` clean) before rebuilding.
+      Also hit, purely a tooling/environment issue rather than an app bug:
+      two separate `EXPO_NO_METRO_WORKSPACE_ROOT=1 ./gradlew assembleRelease`
+      invocations had their *tracking* killed by the harness mid-build
+      (the underlying Gradle daemon kept running independently both times,
+      confirmed via `jps`) — worked around by launching fully detached
+      (`nohup ... &; disown`, output to a log file) and polling for
+      completion by watching the log/output file directly rather than
+      relying on task-tracking for very long-running builds. Separately,
+      not cleaning up the first detached attempt before launching a second
+      briefly left two concurrent Gradle builds racing on the same output
+      files — the same class of Windows file-lock collision Gate 6 hit
+      with `libreactnative.so`; resolved with a full `./gradlew --stop` +
+      process sweep before each retry. **Confirmed working end-to-end
+      (2026-08-11):** installed via Phone Link on the user's real Android
+      phone over home WiFi, generated a real carousel successfully — the
+      first fully real-device (non-emulator) verification of any part of
+      this app.
 - **Exit condition:** external users completing idea→export without support.
       **Not met — genuinely blocked on the user, not on remaining
       engineering work.** Every piece buildable without external accounts
       is done (feedback loop, a real installable local build proving the
       release pipeline itself works end-to-end including the monorepo
-      bundling fix above). What's left needs the user directly: enrolling
+      bundling fix above, now confirmed on a real Android phone over home
+      WiFi — not just the emulator). "External users," though, means real
+      people other than the developer; that's what's genuinely blocked.
+      What's left needs the user directly: enrolling
       in the Apple Developer Program and creating an App Store Connect
       TestFlight group; creating a Google Play Console app listing and an
       internal testing track; running `eas login` (or providing existing

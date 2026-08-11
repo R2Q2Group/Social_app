@@ -19,7 +19,8 @@
       "expo-dev-client",
       "expo-asset",
       "./plugins/withKotlinGradlePluginVersion",
-      "expo-font"
+      "expo-font",
+      "./plugins/withCleartextTraffic"
     ]
   }
 }
