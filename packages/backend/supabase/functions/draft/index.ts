@@ -99,22 +99,42 @@ Deno.serve(async (req) => {
     if (!backendAnthropicKey) {
       return jsonResponse({ error: "backend_key_not_configured" }, 500);
     }
-    const { error: usageError } = await adminClient.rpc("increment_usage", {
-      p_user_id: userId,
-      p_daily_limit: FREE_TIER_DAILY_LIMIT,
-    });
-    if (usageError) {
-      if (usageError.message?.includes("free_tier_limit_exceeded")) {
-        return jsonResponse(
-          {
-            error: "free_tier_limit_exceeded",
-            message: `Free tier is limited to ${FREE_TIER_DAILY_LIMIT} generations/day. Add a BYOK key in settings for unlimited use.`,
-          },
-          429,
-        );
-      }
-      console.error("usage increment failed", usageError);
+
+    // Gate 5: Pro is unlimited generation even on the backend key, same as
+    // BYOK -- only free tier gets capped. Read via the service-role client
+    // (not RLS) since this function already validated the caller's JWT
+    // above; a missing row (trigger hasn't run yet) is treated as free,
+    // matching the entitlement Edge Function's own fallback.
+    const { data: entitlementRow, error: entitlementError } = await adminClient
+      .from("entitlements")
+      .select("tier, status")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (entitlementError) {
+      console.error("entitlement lookup failed", entitlementError);
       return jsonResponse({ error: "internal_error" }, 500);
+    }
+    const isActivePro =
+      entitlementRow?.tier === "pro" && entitlementRow?.status === "active";
+
+    if (!isActivePro) {
+      const { error: usageError } = await adminClient.rpc("increment_usage", {
+        p_user_id: userId,
+        p_daily_limit: FREE_TIER_DAILY_LIMIT,
+      });
+      if (usageError) {
+        if (usageError.message?.includes("free_tier_limit_exceeded")) {
+          return jsonResponse(
+            {
+              error: "free_tier_limit_exceeded",
+              message: `Free tier is limited to ${FREE_TIER_DAILY_LIMIT} generations/day. Add a BYOK key or upgrade to Pro in settings for unlimited use.`,
+            },
+            429,
+          );
+        }
+        console.error("usage increment failed", usageError);
+        return jsonResponse({ error: "internal_error" }, 500);
+      }
     }
     apiKey = backendAnthropicKey;
   }

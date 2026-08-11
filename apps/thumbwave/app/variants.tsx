@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -7,8 +7,9 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { thumbnailAppColors, thumbnailAppTypeScale } from "@r2q2/design-tokens";
+import { getEntitlement } from "@r2q2/account-client";
 import { ThumbnailCard } from "../src/render/ThumbnailCard";
 import { pickFaceCutoutPhoto } from "../src/facecutout/pickPhoto";
 import { captureThumbnailPng } from "../src/export/capture";
@@ -28,12 +29,23 @@ export default function Variants() {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [exportState, setExportState] = useState<ExportState>({ kind: "idle" });
   const [error, setError] = useState<string | null>(null);
+  // Defaults to showing the watermark (free tier) until the entitlement
+  // check resolves, same as Viziphy's preview.tsx.
+  const [isPro, setIsPro] = useState(false);
 
   useEffect(() => {
     if (!draft) {
       router.replace("/");
     }
   }, [draft, router]);
+
+  useFocusEffect(
+    useCallback(() => {
+      getEntitlement()
+        .then((entitlement) => setIsPro(entitlement.tier === "pro"))
+        .catch(() => setIsPro(false));
+    }, []),
+  );
 
   if (!draft) {
     return null;
@@ -99,6 +111,7 @@ export default function Variants() {
           variant={draft.variants[activeIndex]}
           width={cardWidth}
           photoUri={photoUri}
+          showWatermark={!isPro}
         />
       </View>
 

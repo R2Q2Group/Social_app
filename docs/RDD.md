@@ -107,20 +107,28 @@ DraftToDeck, Slideframe, Carouselly, Pinspire (Pinterest-focused), Threadcraft
 Each gate has an explicit exit condition. Do not start a gate until the prior one's
 exit condition is met — this keeps Claude Code sessions resumable without context loss.
 
-**Status as of 2026-08-11:** Gates 0 through 4 are done, including Gate 3.5
-(pulled forward). **Resume from Gate 5** (per-app monetization UI — Pro
-paywall, BYOK settings, free-tier usage display; the underlying
-account/entitlement system was already built in Gate 3.5). Nothing is
-blocked; this is a plain session boundary, not an interrupted gate.
+**Status as of 2026-08-11:** Gates 0 through 5 are done, including Gate 3.5
+(pulled forward). **Resume from Gate 6** (Polish & Export — high-res PDF
+export, custom brand fonts, batch export; Gate 5's paywall already lists
+the first two as "coming soon" Pro perks, so Gate 6 is what makes that copy
+true). Nothing is blocked; this is a plain session boundary, not an
+interrupted gate.
 
 Practical notes for picking back up: local Supabase (`supabase start` in
 `packages/backend`) and each app's Metro dev server (`expo start
 --dev-client` in `apps/viziphy` or `apps/thumbwave`) do not survive a
 session/PC restart and need to be started fresh — see
 `packages/backend/README.md` and the per-gate verification notes below for
-exact steps. Gate 4's exit condition also flagged one unverified detail
-worth a real device/manual pass: Thumbwave's face-cutout render path
-(`SvgImage` + circular `ClipPath` + stroked ring in
+exact steps. Gate 5's verification hit a sharp edge worth remembering here:
+after restarting a stale Metro process, the dev client's native shell can
+resume and look fully functional (including making real network calls)
+while still silently running the *previous* JS bundle — a plain `adb shell
+am start` brings an already-running task to the foreground instead of
+re-fetching JS. Force-stop the app first, then relaunch via an explicit
+`<scheme>://expo-development-client/?url=http://127.0.0.1:<port>` deep link
+to guarantee a real reload. Gate 4's exit condition also flagged one
+unverified detail worth a real device/manual pass: Thumbwave's face-cutout
+render path (`SvgImage` + circular `ClipPath` + stroked ring in
 `apps/thumbwave/src/render/ThumbnailCard.tsx`) is implemented and
 type-checked but was never visually confirmed with an actual selected
 photo — emulator automation couldn't complete a selection in the system
@@ -404,12 +412,93 @@ system, this must exist before Gate 4 starts, not after Gate 3 as originally sco
       `ensureAnonymousSession()` at the top of `getAccountState()` too.
 
 ### Gate 5 — Monetization Layer (per-app entitlement UI)
-- [ ] Pro subscription paywall (unlimited gen, watermark removal, brand fonts, hi-res export)
-- [ ] BYOK settings UI
-- [ ] Usage tracking for free-tier cap
+- [x] Pro subscription paywall (unlimited gen, watermark removal, brand fonts, hi-res export)
+      — `apps/{viziphy,thumbwave}/app/upgrade.tsx`: Free-vs-Pro plan comparison
+      (hi-res export/custom fonts listed as "coming soon," honestly deferred to
+      Gate 6 rather than promised early) + Upgrade/Cancel button. Investigation
+      at the start of this gate found two gaps blocking the exit condition from
+      being real: (1) Pro had no backend effect — `draft/index.ts` only
+      branched on BYOK-or-capped, so a Pro user without a BYOK key would still
+      hit the 3/day cap, contradicting RDD.md §5's "Pro: unlimited generation";
+      (2) nothing existed to remove, since no watermark existed at all. Both
+      fixed as part of this gate (see below), not deferred, since without them
+      "Pro" was a label with no enforcement.
+      Real Google Play Billing / Apple StoreKit integration is the intended
+      end state per product direction, but needs store console access, product
+      IDs, and native build config this session can't provision. Landed
+      instead: `purchasePro()`/`cancelPro()` in
+      `packages/account-client/src/billing.ts` are the seam for that — same
+      call shape a real flow would need (resolve to the caller's updated
+      Entitlement) — backed today by two new dev-mock RPCs,
+      `upgrade_to_pro()`/`downgrade_to_free()`
+      (`packages/backend/supabase/migrations/20260812000000_gate5_monetization.sql`,
+      security-definer + `auth.uid()` check, same pattern as Gate 1's
+      `set_byok_key`/`delete_byok_key`), mirroring how Gate 3.5 already stood
+      in for this exact transition by flipping the DB by hand. Swapping in
+      real IAP later only replaces what's inside those two functions.
+      Free-tier/Pro enforcement itself: a "Made with Viziphy"/"Made with
+      Thumbwave" watermark, rendered as a normal child of each slide/thumbnail
+      card (`SlideCard.tsx`'s five layouts; `ThumbnailCard.tsx`'s `<SvgText>`)
+      so the existing `captureRef`-based PNG/PDF export picks it up for free
+      with no separate image-processing pass — gated by a `showWatermark` prop
+      threaded from each preview screen's `getEntitlement()` call, defaulting
+      to shown (free) until that resolves rather than briefly flashing a
+      watermark-free export.
+- [x] BYOK settings UI — new `packages/account-client/src/byok.ts`
+      (`listByokKeys`/`setByokKey`/`deleteByokKey`), the first client wrapper
+      around Gate 1's `set_byok_key`/`delete_byok_key` RPCs and
+      `byok_keys_select_own` RLS policy (Gate 1 only exercised them from the
+      Edge Function side). Folded into each app's existing `account.tsx`
+      (not a new route — account-scoped) rather than duplicated: masked key
+      input + Save when unset, "Key saved" status + Remove when set. Only an
+      Anthropic row is rendered — `openai` is modeled in the `byok_keys`
+      schema per Gate 1 but `ai-core` has no OpenAI client path yet, so an
+      OpenAI row would be a dead control.
+- [x] Usage tracking for free-tier cap — `packages/account-client/src/usage.ts`'s
+      `getUsageToday()` reads `usage_daily` directly (RLS-scoped, no new
+      endpoint needed) and renders "X / 3 used today" on the account screen;
+      swaps to "unlimited (BYOK)"/"unlimited (Pro)" for those callers instead,
+      since they never hit `increment_usage`.
 - Note: the underlying account/entitlement *system* was built in Gate 3.5 — this
   gate is the per-app UI/UX on top of it (Viziphy's paywall screen, then Thumbwave's).
-- **Exit condition:** free/BYOK/Pro paths all functionally distinct and enforced.
+- **Exit condition met (2026-08-11):** verified end-to-end on the
+      `Medium_Phone_API_36.1` Android emulator against local Supabase, both
+      apps, plus direct backend curl checks. Backend: a fresh anonymous
+      session's 4th `draft` call 429'd (`free_tier_limit_exceeded`) after 3
+      free-tier successes; calling the new `upgrade_to_pro()` RPC on that same
+      session let two more calls through unlimited on the *backend* key
+      (`usedByok:false`, proving the new entitlement-aware skip in
+      `draft/index.ts`, not just the pre-existing BYOK path); `downgrade_to_free()`
+      immediately restored the 429; a separately-set (deliberately invalid)
+      BYOK key produced a `draft_generation_failed` 502 from Anthropic auth,
+      not a 429 — confirming the BYOK bypass path is unchanged. App UI
+      (Viziphy): generated a real carousel on a free account and confirmed the
+      "Made with Viziphy" watermark rendered on-card (both `accentBar` and
+      `topHeavy` layouts); Account screen showed a live "2 / 3 used today"
+      matching real `usage_daily` state for a real signed-in user
+      (`gate35ui@example.com`, carried over from Gate 3.5); saved a BYOK key →
+      UI flipped to "unlimited (BYOK)" + Remove key → removed it → reverted to
+      the X/3 counter; opened the Upgrade screen, tapped Upgrade to Pro →
+      entitlement flipped live, generated a 4th carousel on the same
+      already-capped account and it succeeded with the watermark gone. App UI
+      (Thumbwave): generated a thumbnail on a free anonymous session and
+      confirmed the "Made with Thumbwave" watermark rendered in the SVG
+      output; Account and Upgrade screens both rendered correctly with
+      Thumbwave's yellow accent theming and app-specific copy ("Extra A/B
+      variant packs" vs. Viziphy's "Custom brand fonts"). `npx tsc --noEmit`
+      clean on both apps. One real environment issue hit and fixed during
+      verification, not an app-code bug: after killing a stale Metro process
+      left over from a prior session (same class of issue Gate 4 already
+      documented — only one dev server per port), the Viziphy dev client's
+      *native shell* reconnected and appeared to work, but had silently kept
+      running the *old* JS bundle from before this gate's code changes — a
+      plain `am start` brings an already-running dev-client task to the
+      foreground rather than re-fetching JS, so the watermark appeared
+      genuinely missing until a `force-stop` + an explicit
+      `expo-development-client://…?url=` deep link forced a real reload from
+      the current Metro instance. Worth remembering: a dev-client "looking
+      alive and rendering real data" is not proof it's running current code
+      after any Metro restart.
 
 ### Gate 6 — Polish & Export
 - [ ] High-res PDF export (carousels)

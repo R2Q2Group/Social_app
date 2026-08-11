@@ -79,6 +79,13 @@ function PageIndicator({ index, total, style }: { index: number; total: number; 
   );
 }
 
+/** Gate 5: free-tier export watermark. Rendered as a normal child of each
+ * layout's top-level View (the one captureRef captures), not a separate
+ * overlay pass, so PNG/PDF export picks it up for free. */
+function Watermark() {
+  return <Text style={styles.watermark}>Made with Viziphy</Text>;
+}
+
 function Bullets({ bullets, accentColor, align = "left" }: { bullets?: string[]; accentColor: string; align?: "left" | "center" }) {
   if (!bullets || bullets.length === 0) return null;
   return (
@@ -101,10 +108,11 @@ interface LayoutProps {
   width: number;
   height: number;
   accentColor: string;
+  showWatermark?: boolean;
 }
 
 /** LinkedIn/Facebook: professional, left accent bar, stacked hook/title/subtitle/bullets. */
-function AccentBarLayout({ cardRef, slide, index, total, width, height, accentColor }: LayoutProps) {
+function AccentBarLayout({ cardRef, slide, index, total, width, height, accentColor, showWatermark }: LayoutProps) {
   const headingStyle: TextStyle = slide.hook
     ? { fontSize: carouselTypeScale.hook, fontWeight: "700", color: carouselColors.text }
     : { fontSize: carouselTypeScale.title, fontWeight: "700", color: carouselColors.text };
@@ -151,12 +159,13 @@ function AccentBarLayout({ cardRef, slide, index, total, width, height, accentCo
 
         <PageIndicator index={index} total={total} style={styles.pageIndicatorRight} />
       </View>
+      {showWatermark ? <Watermark /> : null}
     </View>
   );
 }
 
 /** Instagram: centered, colorful — accent circle behind the hook, less text. */
-function CenteredLayout({ cardRef, slide, index, total, width, height, accentColor }: LayoutProps) {
+function CenteredLayout({ cardRef, slide, index, total, width, height, accentColor, showWatermark }: LayoutProps) {
   return (
     <View
       ref={cardRef}
@@ -191,13 +200,14 @@ function CenteredLayout({ cardRef, slide, index, total, width, height, accentCol
 
         <PageIndicator index={index} total={total} />
       </View>
+      {showWatermark ? <Watermark /> : null}
     </View>
   );
 }
 
 /** X Threads: one punchy statement, centered, no bullets — bulletPoints are
  * already stripped by enforceTextDensity for this platform. */
-function StatementLayout({ cardRef, slide, index, total, width, height, accentColor }: LayoutProps) {
+function StatementLayout({ cardRef, slide, index, total, width, height, accentColor, showWatermark }: LayoutProps) {
   return (
     <View
       ref={cardRef}
@@ -218,13 +228,14 @@ function StatementLayout({ cardRef, slide, index, total, width, height, accentCo
         ) : null}
       </View>
       <PageIndicator index={index} total={total} style={styles.pageIndicatorRight} />
+      {showWatermark ? <Watermark /> : null}
     </View>
   );
 }
 
 /** TikTok/Reels cover: bold single focal point, huge type, no subtitle/bullets
  * — both are already stripped by enforceTextDensity for this platform. */
-function FocalLayout({ cardRef, slide, index, total, width, height, accentColor }: LayoutProps) {
+function FocalLayout({ cardRef, slide, index, total, width, height, accentColor, showWatermark }: LayoutProps) {
   return (
     <View
       ref={cardRef}
@@ -240,13 +251,14 @@ function FocalLayout({ cardRef, slide, index, total, width, height, accentColor 
         />
       </View>
       <PageIndicator index={index} total={total} style={styles.pageIndicatorRight} />
+      {showWatermark ? <Watermark /> : null}
     </View>
   );
 }
 
 /** Pinterest: text-heavy top third (SEO-style title), decorative color block
  * filling the rest — stands in for the pin's image area. */
-function TopHeavyLayout({ cardRef, slide, index, total, width, height, accentColor }: LayoutProps) {
+function TopHeavyLayout({ cardRef, slide, index, total, width, height, accentColor, showWatermark }: LayoutProps) {
   const topHeight = height * 0.38;
   return (
     <View
@@ -282,6 +294,7 @@ function TopHeavyLayout({ cardRef, slide, index, total, width, height, accentCol
         </View>
         <PageIndicator index={index} total={total} />
       </View>
+      {showWatermark ? <Watermark /> : null}
     </View>
   );
 }
@@ -292,17 +305,19 @@ export interface SlideCardProps {
   total: number;
   width: number;
   platform: CarouselPlatformKey;
+  /** Gate 5: free-tier export watermark, omitted (or false) for Pro. */
+  showWatermark?: boolean;
 }
 
 export const SlideCard = forwardRef<View, SlideCardProps>(function SlideCard(
-  { slide: rawSlide, index, total, width, platform },
+  { slide: rawSlide, index, total, width, platform, showWatermark },
   ref,
 ) {
   const { aspectRatio, layout } = carouselPlatforms[platform];
   const height = width / parseAspectRatio(aspectRatio);
   const slide = enforceTextDensity(rawSlide, platform);
   const accentColor = accentForCalloutType(slide.calloutType);
-  const layoutProps: LayoutProps = { cardRef: ref, slide, index, total, width, height, accentColor };
+  const layoutProps: LayoutProps = { cardRef: ref, slide, index, total, width, height, accentColor, showWatermark };
 
   switch (layout) {
     case "centered":
@@ -394,5 +409,13 @@ const styles = StyleSheet.create({
   },
   pageIndicatorRight: {
     alignSelf: "flex-end",
+  },
+  watermark: {
+    position: "absolute",
+    bottom: 8,
+    right: 12,
+    fontSize: carouselTypeScale.caption,
+    color: carouselColors.textMuted,
+    opacity: 0.55,
   },
 });

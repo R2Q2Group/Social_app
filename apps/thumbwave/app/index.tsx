@@ -19,11 +19,13 @@ export default function Home() {
   const { idea, setIdea, setDraft } = useDraft();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isFreeTierLimit, setIsFreeTierLimit] = useState(false);
 
   const canGenerate = idea.trim().length > 0 && !isLoading;
 
   async function handleGenerate() {
     setError(null);
+    setIsFreeTierLimit(false);
     setIsLoading(true);
     try {
       const { draft } = await requestDraft("thumbnail", idea.trim());
@@ -32,6 +34,7 @@ export default function Home() {
     } catch (err) {
       if (err instanceof FreeTierLimitError) {
         setError(err.message);
+        setIsFreeTierLimit(true);
       } else {
         setError(err instanceof Error ? err.message : "Something went wrong.");
       }
@@ -68,7 +71,16 @@ export default function Home() {
         editable={!isLoading}
       />
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error ? (
+        <View>
+          <Text style={styles.error}>{error}</Text>
+          {isFreeTierLimit ? (
+            <Pressable onPress={() => router.push("/upgrade")}>
+              <Text style={styles.link}>View plans</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
 
       <Pressable
         style={[styles.button, !canGenerate && styles.buttonDisabled]}
@@ -125,6 +137,12 @@ const styles = StyleSheet.create({
     color: thumbnailAppColors.statNegative,
     fontSize: thumbnailAppTypeScale.body,
     marginTop: 16,
+  },
+  link: {
+    color: thumbnailAppColors.accent,
+    fontSize: thumbnailAppTypeScale.body,
+    fontWeight: "600",
+    marginTop: 8,
   },
   button: {
     marginTop: 24,

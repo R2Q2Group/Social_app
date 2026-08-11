@@ -25,6 +25,8 @@ export interface CarouselPreviewProps {
   /** Reports which slide is currently in view, e.g. so an "Export PNG"
    * action knows which slide to capture. */
   onActiveIndexChange?: (index: number) => void;
+  /** Gate 5: free-tier export watermark, omitted (or false) for Pro. */
+  showWatermark?: boolean;
 }
 
 export function CarouselPreview({
@@ -32,6 +34,7 @@ export function CarouselPreview({
   platform,
   onSlideRef,
   onActiveIndexChange,
+  showWatermark,
 }: CarouselPreviewProps) {
   const { width: windowWidth } = useWindowDimensions();
   const [activeIndex, setActiveIndex] = useState(0);
@@ -99,6 +102,7 @@ export function CarouselPreview({
               total={draft.slides.length}
               width={slideWidth}
               platform={platform}
+              showWatermark={showWatermark}
             />
           </View>
         ))}

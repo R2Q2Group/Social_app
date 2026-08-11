@@ -7,13 +7,14 @@ import {
   Text,
   View,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import {
   carouselColors,
   carouselPlatforms,
   carouselTypeScale,
   type CarouselPlatformKey,
 } from "@r2q2/design-tokens";
+import { getEntitlement } from "@r2q2/account-client";
 import { CarouselPreview } from "../src/render/CarouselPreview";
 import { captureSlidePng } from "../src/export/capture";
 import { buildCarouselPdf } from "../src/export/pdf";
@@ -41,12 +42,24 @@ export default function Preview() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [exportState, setExportState] = useState<ExportState>({ kind: "idle" });
   const [error, setError] = useState<string | null>(null);
+  // Defaults to showing the watermark (free tier) until the entitlement
+  // check resolves, rather than briefly flashing a watermark-free export
+  // for a free-tier user on a slow connection.
+  const [isPro, setIsPro] = useState(false);
 
   useEffect(() => {
     if (!draft) {
       router.replace("/");
     }
   }, [draft, router]);
+
+  useFocusEffect(
+    useCallback(() => {
+      getEntitlement()
+        .then((entitlement) => setIsPro(entitlement.tier === "pro"))
+        .catch(() => setIsPro(false));
+    }, []),
+  );
 
   const handleSlideRef = useCallback((index: number, ref: View | null) => {
     slideRefs.current[index] = ref;
@@ -120,6 +133,7 @@ export default function Preview() {
         platform={platform}
         onSlideRef={handleSlideRef}
         onActiveIndexChange={setActiveIndex}
+        showWatermark={!isPro}
       />
 
       {error ? <Text style={styles.error}>{error}</Text> : null}

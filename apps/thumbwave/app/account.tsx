@@ -13,21 +13,33 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { thumbnailAppColors, thumbnailAppTypeScale } from "@r2q2/design-tokens";
 import {
   AlreadySignedInError,
+  deleteByokKey,
   getAccountState,
   getEntitlement,
+  getUsageToday,
+  listByokKeys,
+  setByokKey,
   signInWithEmail,
   signOut,
   upgradeAnonymousAccount,
   type AccountState,
+  type ByokKeyStatus,
   type Entitlement,
+  type UsageToday,
 } from "@r2q2/account-client";
 
 type Mode = "signUp" | "signIn";
+
+// Gate 4/ai-core only wires up an Anthropic client path today — rendering an
+// OpenAI row here would be a dead control with no backend path to hit.
+const BYOK_PROVIDER = "anthropic" as const;
 
 export default function Account() {
   const router = useRouter();
   const [account, setAccount] = useState<AccountState | null>(null);
   const [entitlement, setEntitlement] = useState<Entitlement | null>(null);
+  const [byokStatus, setByokStatus] = useState<ByokKeyStatus | null>(null);
+  const [usage, setUsage] = useState<UsageToday | null>(null);
   const [mode, setMode] = useState<Mode>("signUp");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -35,14 +47,30 @@ export default function Account() {
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
+  const [byokInput, setByokInput] = useState("");
+  const [byokBusy, setByokBusy] = useState(false);
+
   const refresh = useCallback(async () => {
     try {
-      const [accountState, entitlementState] = await Promise.all([
+      const [accountState, entitlementState, byokKeys] = await Promise.all([
         getAccountState(),
         getEntitlement(),
+        listByokKeys(),
       ]);
       setAccount(accountState);
       setEntitlement(entitlementState);
+      const anthropicStatus =
+        byokKeys.find((k) => k.provider === BYOK_PROVIDER) ?? null;
+      setByokStatus(anthropicStatus);
+
+      // Usage only matters for a free-tier caller with no BYOK key — Pro
+      // and BYOK both bypass the cap in draft/index.ts, so "X / 3" would be
+      // misleading for them.
+      if (entitlementState.tier === "pro" || anthropicStatus?.hasKey) {
+        setUsage(null);
+      } else {
+        setUsage(await getUsageToday());
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load account.");
     }
@@ -95,6 +123,37 @@ export default function Account() {
     }
   }
 
+  async function handleSaveByokKey() {
+    setError(null);
+    setMessage(null);
+    setByokBusy(true);
+    try {
+      await setByokKey(BYOK_PROVIDER, byokInput.trim());
+      setByokInput("");
+      setMessage("API key saved.");
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save key.");
+    } finally {
+      setByokBusy(false);
+    }
+  }
+
+  async function handleRemoveByokKey() {
+    setError(null);
+    setMessage(null);
+    setByokBusy(true);
+    try {
+      await deleteByokKey(BYOK_PROVIDER);
+      setMessage("API key removed.");
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to remove key.");
+    } finally {
+      setByokBusy(false);
+    }
+  }
+
   const canSubmit = email.trim().length > 0 && password.length >= 6 && !isLoading;
 
   return (
@@ -120,8 +179,67 @@ export default function Account() {
               Plan: {entitlement.tier} ({entitlement.status})
             </Text>
           ) : null}
+          {entitlement?.tier === "pro" || byokStatus?.hasKey ? (
+            <Text style={styles.statusLine}>
+              Generations: unlimited {entitlement?.tier === "pro" ? "(Pro)" : "(BYOK)"}
+            </Text>
+          ) : usage ? (
+            <Text style={styles.statusLine}>
+              Generations: {usage.requestCount} / {usage.dailyLimit} used today
+            </Text>
+          ) : null}
+          <Pressable onPress={() => router.push("/upgrade")}>
+            <Text style={styles.link}>
+              {entitlement?.tier === "pro" ? "Manage plan" : "View plans"}
+            </Text>
+          </Pressable>
         </View>
       ) : null}
+
+      <View style={styles.statusBox}>
+        <Text style={styles.sectionTitle}>Your API key (BYOK)</Text>
+        <Text style={styles.hint}>
+          {byokStatus?.hasKey
+            ? "Anthropic key saved — unlimited generations, billed to your own account."
+            : "Add your own Anthropic key for unlimited generations at no cost to us."}
+        </Text>
+        {byokStatus?.hasKey ? (
+          <Pressable
+            style={[styles.secondaryButton, byokBusy && styles.buttonDisabled]}
+            onPress={handleRemoveByokKey}
+            disabled={byokBusy}
+          >
+            <Text style={styles.secondaryButtonText}>Remove key</Text>
+          </Pressable>
+        ) : (
+          <>
+            <TextInput
+              style={styles.input}
+              placeholder="sk-ant-..."
+              placeholderTextColor={thumbnailAppColors.textMuted}
+              value={byokInput}
+              onChangeText={setByokInput}
+              autoCapitalize="none"
+              secureTextEntry
+              editable={!byokBusy}
+            />
+            <Pressable
+              style={[
+                styles.secondaryButton,
+                (byokBusy || byokInput.trim().length === 0) && styles.buttonDisabled,
+              ]}
+              onPress={handleSaveByokKey}
+              disabled={byokBusy || byokInput.trim().length === 0}
+            >
+              {byokBusy ? (
+                <ActivityIndicator color={thumbnailAppColors.text} />
+              ) : (
+                <Text style={styles.secondaryButtonText}>Save key</Text>
+              )}
+            </Pressable>
+          </>
+        )}
+      </View>
 
       {account && !account.isAnonymous ? (
         <Pressable
@@ -230,12 +348,29 @@ const styles = StyleSheet.create({
     backgroundColor: thumbnailAppColors.surface,
     borderRadius: 12,
     padding: 16,
-    marginBottom: 24,
+    marginBottom: 16,
     gap: 4,
   },
   statusLine: {
     color: thumbnailAppColors.text,
     fontSize: thumbnailAppTypeScale.body,
+  },
+  link: {
+    color: thumbnailAppColors.accent,
+    fontSize: thumbnailAppTypeScale.body,
+    fontWeight: "600",
+    marginTop: 8,
+  },
+  sectionTitle: {
+    color: thumbnailAppColors.text,
+    fontSize: thumbnailAppTypeScale.body,
+    fontWeight: "700",
+    marginBottom: 4,
+  },
+  hint: {
+    color: thumbnailAppColors.textMuted,
+    fontSize: thumbnailAppTypeScale.caption,
+    marginBottom: 12,
   },
   modeRow: {
     flexDirection: "row",
@@ -262,7 +397,7 @@ const styles = StyleSheet.create({
   input: {
     minHeight: 48,
     borderRadius: 12,
-    backgroundColor: thumbnailAppColors.surface,
+    backgroundColor: thumbnailAppColors.background,
     color: thumbnailAppColors.text,
     fontSize: thumbnailAppTypeScale.body,
     padding: 16,
@@ -282,6 +417,17 @@ const styles = StyleSheet.create({
     color: thumbnailAppColors.background,
     fontSize: thumbnailAppTypeScale.body,
     fontWeight: "700",
+  },
+  secondaryButton: {
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+    backgroundColor: thumbnailAppColors.background,
+  },
+  secondaryButtonText: {
+    color: thumbnailAppColors.text,
+    fontSize: thumbnailAppTypeScale.body,
+    fontWeight: "600",
   },
   message: {
     color: thumbnailAppColors.statPositive,

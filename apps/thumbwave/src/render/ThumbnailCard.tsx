@@ -28,10 +28,12 @@ export interface ThumbnailCardProps {
    * circular crop + stroked ring, not ML background removal). */
   photoUri?: string | null;
   presetStyle?: string;
+  /** Gate 5: free-tier export watermark, omitted (or false) for Pro. */
+  showWatermark?: boolean;
 }
 
 export const ThumbnailCard = forwardRef<View, ThumbnailCardProps>(
-  function ThumbnailCard({ variant, width, photoUri, presetStyle }, ref) {
+  function ThumbnailCard({ variant, width, photoUri, presetStyle, showWatermark }, ref) {
     const height = width / CANVAS_RATIO;
     const scale = width / thumbnailCanvas.width;
 
@@ -125,6 +127,20 @@ export const ThumbnailCard = forwardRef<View, ThumbnailCardProps>(
             color={thumbnailColors.accent}
             presetStyle={presetStyle}
           />
+
+          {showWatermark ? (
+            <SvgText
+              x={width - width * 0.02}
+              y={height - height * 0.03}
+              fontSize={height * 0.035}
+              fontWeight="600"
+              fill={thumbnailColors.text}
+              fillOpacity={0.4}
+              textAnchor="end"
+            >
+              Made with Thumbwave
+            </SvgText>
+          ) : null}
         </Svg>
       </View>
     );
