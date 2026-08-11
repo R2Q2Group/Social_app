@@ -132,8 +132,18 @@ exit condition is met — this keeps Claude Code sessions resumable without cont
       anonymous included, so this works ahead of the Gate 3.5 account system —
       an anonymous session upgrades to a real account later with no migration.
 - **Exit condition:** can POST an idea and receive valid structured JSON for both modes.
-      Code complete; not yet run end-to-end (no Docker in the dev sandbox — see
-      `packages/backend/README.md` for the local test steps to run yourself).
+      Code complete; not yet run end-to-end. Status as of 2026-08-10:
+      Docker Desktop installed (per-user install at
+      `%LOCALAPPDATA%\Programs\DockerDesktop`, CLI `docker.exe` v29.7.2,
+      not on PATH) but its daemon isn't responding yet — `docker info`
+      returns `500 Internal Server Error` reaching `dockerDesktopLinuxEngine`
+      (WSL2 backend not up). A PC restart is pending to resolve this.
+      **Resume from here:** after reboot, confirm Docker Desktop shows
+      "Running", then re-verify with `docker info`, then follow
+      `packages/backend/README.md`'s "Gate 1: testing the `draft` endpoint"
+      steps (`supabase start` → fill `supabase/functions/.env` → `supabase
+      functions serve draft` → curl both modes) to actually clear this
+      exit condition.
 
 ### Gate 2 — Carousel Renderer (MVP platform: pick one, e.g. LinkedIn)
 - [ ] Native vector slide renderer for one platform's aspect ratio + token set
