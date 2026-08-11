@@ -15,7 +15,7 @@ import {
   carouselTypeScale,
   type CarouselPlatformKey,
 } from "@r2q2/design-tokens";
-import { getEntitlement } from "@r2q2/account-client";
+import { getEntitlement, submitDraftFeedback, type FeedbackRating } from "@r2q2/account-client";
 import { CarouselPreview } from "../src/render/CarouselPreview";
 import { captureSlidePng, captureSlidesSequentially } from "../src/export/capture";
 import { buildCarouselPdf } from "../src/export/pdf";
@@ -58,6 +58,9 @@ export default function Preview() {
   // for a free-tier user on a slow connection.
   const [isPro, setIsPro] = useState(false);
   const [brandFont, setBrandFont] = useState<BrandFontKey | undefined>(undefined);
+  const [feedbackByPlatform, setFeedbackByPlatform] = useState<
+    Partial<Record<CarouselPlatformKey, FeedbackRating>>
+  >({});
 
   // Off-screen high-res/batch capture: set to request a render, cleared once
   // the requester has what it needs. See HiResExporter for why this can't
@@ -173,6 +176,14 @@ export default function Preview() {
     }
   }
 
+  function handleFeedback(rating: FeedbackRating) {
+    setFeedbackByPlatform((prev) => ({ ...prev, [platform]: rating }));
+    // Best-effort telemetry: a failed submit shouldn't interrupt the user or
+    // block the export flow, so it's swallowed rather than surfaced via the
+    // shared `error` banner used for export failures.
+    submitDraftFeedback("viziphy", "carousel", platform, rating).catch(() => {});
+  }
+
   const isExporting = exportState.kind !== "idle";
 
   return (
@@ -204,6 +215,32 @@ export default function Preview() {
         showWatermark={!isPro}
         fontFamily={activeFontFamily}
       />
+
+      <View style={styles.feedbackRow}>
+        <Text style={styles.feedbackLabel}>
+          How's this draft for {PLATFORM_LABELS[platform]}?
+        </Text>
+        <View style={styles.feedbackButtons}>
+          <Pressable
+            onPress={() => handleFeedback("up")}
+            style={[
+              styles.feedbackButton,
+              feedbackByPlatform[platform] === "up" && styles.feedbackButtonActive,
+            ]}
+          >
+            <Text style={styles.feedbackButtonText}>👍</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => handleFeedback("down")}
+            style={[
+              styles.feedbackButton,
+              feedbackByPlatform[platform] === "down" && styles.feedbackButtonActive,
+            ]}
+          >
+            <Text style={styles.feedbackButtonText}>👎</Text>
+          </Pressable>
+        </View>
+      </View>
 
       {pendingExport ? (
         <HiResExporter
@@ -329,6 +366,36 @@ const styles = StyleSheet.create({
   },
   chipTextActive: {
     color: carouselColors.background,
+  },
+  feedbackRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 12,
+    marginHorizontal: 24,
+  },
+  feedbackLabel: {
+    flex: 1,
+    fontSize: carouselTypeScale.caption,
+    color: carouselColors.textMuted,
+  },
+  feedbackButtons: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  feedbackButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: carouselColors.surface,
+  },
+  feedbackButtonActive: {
+    backgroundColor: carouselColors.accent,
+  },
+  feedbackButtonText: {
+    fontSize: 18,
   },
   fontScroll: {
     flexGrow: 0,

@@ -111,7 +111,12 @@ exit condition is met — this keeps Claude Code sessions resumable without cont
 including Gate 3.5 (pulled forward). **Gate 6's exit condition is now met** —
 the prior session's one open item, batch export's corrupt `.zip`, is fixed
 (jszip replaced with fflate) and device-verified; all six exit checklist
-items now pass. **Gate 7 (Beta Launch) is next and hasn't started.**
+items now pass. **Gate 7 (Beta Launch) is in progress and blocked on the
+user**: the feedback loop is built and verified, and a real local Android
+build proves the release pipeline works, but TestFlight/Play Store internal
+testing — and thus the gate's actual exit condition — needs Apple
+Developer/Google Play Console account access and an `eas login` this
+session has no credentials for.
 Highlights, in the order they came up:
 
 1. **The previous session's stuck build was exactly what it looked like —
@@ -727,9 +732,90 @@ system, this must exist before Gate 4 starts, not after Gate 3 as originally sco
          on a fresh account.
 
 ### Gate 7 — Beta Launch
-- [ ] TestFlight/internal Android build
-- [ ] Feedback loop on AI draft quality per platform
+- [x] Feedback loop on AI draft quality per platform — new
+      `public.draft_feedback` table
+      (`packages/backend/supabase/migrations/20260812010000_gate7_feedback.sql`):
+      user-owned event log (RLS insert-own/select-own, no service-role RPC
+      needed since it's plain content, not a secret like `byok_keys`) keyed
+      on `{app, mode, platform, rating}` — re-rating the same platform/variant
+      inserts another row rather than overwriting, preserving history across
+      edits. `packages/account-client/src/feedback.ts`'s `submitDraftFeedback()`
+      is the shared client wrapper. Wired into both apps' existing preview
+      screens as a 👍/👎 row: `apps/viziphy/app/preview.tsx` (per platform
+      chip — "How's this draft for LinkedIn?") and
+      `apps/thumbwave/app/variants.tsx` (per A/B variant — `platform` stores
+      `variant-{index}` since Thumbwave has no platform axis). Submission
+      failures are swallowed (best-effort telemetry, matching how export
+      errors are surfaced separately) so a network hiccup never blocks the
+      export flow the feedback row sits next to.
+      **Verified end-to-end (2026-08-11):** on the
+      `Medium_Phone_API_36.1` emulator, tapped 👍 then 👎 on a real Viziphy
+      LinkedIn draft and 👍 on a real Thumbwave variant, confirmed via
+      direct `psql` against the local Supabase container that all three
+      rows landed with correct `app`/`mode`/`platform`/`rating` values and
+      that the UI's active-state highlight tracked each tap.
+- [x] Internal Android build (local) / [ ] TestFlight/Play Store internal
+      testing track (blocked — see below). Confirmed `eas-cli` is not
+      authenticated in this environment (`npx eas-cli whoami` → "Not logged
+      in"), and true TestFlight/Play internal-testing distribution needs an
+      enrolled Apple Developer Program membership and Google Play Console
+      access this session has no credentials for — those are the user's
+      accounts to provision, not something to work around. As a reachable
+      stand-in, produced a real installable release APK locally:
+      `cd apps/viziphy/android && EXPO_NO_METRO_WORKSPACE_ROOT=1 ./gradlew assembleRelease`,
+      still debug-signed (the Expo-prebuilt `android/app/build.gradle`
+      defaults `release`'s `signingConfig` to the debug keystore — a real
+      Play Store submission needs its own release keystore, deliberately
+      not generated here since that key becomes the app's permanent
+      identity in the store and shouldn't be minted without the user in the
+      loop). One real bug found and fixed along the way: the release
+      build's JS-bundling step
+      (`:app:createBundleReleaseJsAndAssets`, i.e. `expo export:embed`)
+      failed with `Unable to resolve module ./index.js from
+      D:\Social_Media_app/.` — reproduced independent of which entry file
+      was named. Root cause: Expo's monorepo auto-detection
+      (`EXPO_USE_METRO_WORKSPACE_ROOT`, on by default) points Metro's
+      *server root* at the npm-workspace root for this exact code path
+      (`relativeTo: "server"` in `MetroBundlerDevServer.resolveRelativePathAsync`),
+      so the embed step's relative-path resolution lands one directory
+      *below* the monorepo root instead of inside `apps/viziphy`. The
+      asymmetry that makes this tricky: the *dev* server needs
+      workspace-root detection ON (it's how Metro finds `expo-router`,
+      hoisted to the monorepo root's `node_modules` with no local copy
+      under `apps/viziphy/node_modules`) while the *release embed* step
+      needs it OFF — confirmed by testing both ways: baking
+      `EXPO_NO_METRO_WORKSPACE_ROOT=1` into `metro.config.js` fixed the
+      release build but broke `expo start` (`Unable to resolve module
+      ./node_modules/expo-router/entry`). Fix landed as a build-invocation
+      env var instead of a code change, so `metro.config.js` is untouched
+      and dev workflow is unaffected. A second, unrelated failure surfaced
+      on the same attempt — `expo-modules-core`'s native
+      `buildCMakeRelWithDebInfo[arm64-v8a]` task hit a Windows
+      `FileSystemException` on `libreactnative.so`, "the process cannot
+      access the file because it is being used by another process" —
+      caused by a stale Gradle daemon from an earlier failed attempt still
+      holding the file (`./gradlew --stop` showed 2 daemons running);
+      `./gradlew --stop` before the retry resolved it.
+      **Verified (2026-08-11):** `BUILD SUCCESSFUL`, produced
+      `app-release.apk` (~123MB); installed over the existing dev-client
+      install via `adb install -r` and confirmed it launches standalone —
+      no Metro bundling banner, no dev-server dependency, real embedded JS
+      bundle. Reinstalled the debug/dev-client build afterward so the
+      emulator was left in its normal dev-ready state, not stuck on the
+      release build.
 - **Exit condition:** external users completing idea→export without support.
+      **Not met — genuinely blocked on the user, not on remaining
+      engineering work.** Every piece buildable without external accounts
+      is done (feedback loop, a real installable local build proving the
+      release pipeline itself works end-to-end including the monorepo
+      bundling fix above). What's left needs the user directly: enrolling
+      in the Apple Developer Program and creating an App Store Connect
+      TestFlight group; creating a Google Play Console app listing and an
+      internal testing track; running `eas login` (or providing existing
+      EAS credentials) so cloud builds/submission are possible at all; and
+      a product decision on real external testers before "external users"
+      can be literally true. None of this is guessable or safe to
+      provision unattended.
 
 ### Gate 8 — Scale & Analytics
 - [ ] Usage analytics (which platforms/styles are most generated)

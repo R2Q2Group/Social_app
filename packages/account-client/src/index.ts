@@ -6,3 +6,4 @@ export * from "./draftClient";
 export * from "./byok";
 export * from "./billing";
 export * from "./usage";
+export * from "./feedback";

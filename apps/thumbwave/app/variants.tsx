@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { thumbnailAppColors, thumbnailAppTypeScale } from "@r2q2/design-tokens";
-import { getEntitlement } from "@r2q2/account-client";
+import { getEntitlement, submitDraftFeedback, type FeedbackRating } from "@r2q2/account-client";
 import { ThumbnailCard } from "../src/render/ThumbnailCard";
 import { pickFaceCutoutPhoto } from "../src/facecutout/pickPhoto";
 import { captureThumbnailPng } from "../src/export/capture";
@@ -32,6 +32,7 @@ export default function Variants() {
   // Defaults to showing the watermark (free tier) until the entitlement
   // check resolves, same as Viziphy's preview.tsx.
   const [isPro, setIsPro] = useState(false);
+  const [feedbackByVariant, setFeedbackByVariant] = useState<Record<number, FeedbackRating>>({});
 
   useEffect(() => {
     if (!draft) {
@@ -77,6 +78,13 @@ export default function Variants() {
     }
   }
 
+  function handleFeedback(rating: FeedbackRating) {
+    setFeedbackByVariant((prev) => ({ ...prev, [activeIndex]: rating }));
+    // Best-effort telemetry, same as Viziphy's preview.tsx: a failed submit
+    // shouldn't interrupt the user or block the export flow.
+    submitDraftFeedback("thumbwave", "thumbnail", `variant-${activeIndex}`, rating).catch(() => {});
+  }
+
   const isExporting = exportState.kind !== "idle";
 
   return (
@@ -113,6 +121,30 @@ export default function Variants() {
           photoUri={photoUri}
           showWatermark={!isPro}
         />
+      </View>
+
+      <View style={styles.feedbackRow}>
+        <Text style={styles.feedbackLabel}>How's this variant?</Text>
+        <View style={styles.feedbackButtons}>
+          <Pressable
+            onPress={() => handleFeedback("up")}
+            style={[
+              styles.feedbackButton,
+              feedbackByVariant[activeIndex] === "up" && styles.feedbackButtonActive,
+            ]}
+          >
+            <Text style={styles.feedbackButtonText}>👍</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => handleFeedback("down")}
+            style={[
+              styles.feedbackButton,
+              feedbackByVariant[activeIndex] === "down" && styles.feedbackButtonActive,
+            ]}
+          >
+            <Text style={styles.feedbackButtonText}>👎</Text>
+          </Pressable>
+        </View>
       </View>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -186,6 +218,36 @@ const styles = StyleSheet.create({
   cardWrap: {
     alignItems: "center",
     justifyContent: "center",
+  },
+  feedbackRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 16,
+    marginHorizontal: 24,
+  },
+  feedbackLabel: {
+    flex: 1,
+    fontSize: thumbnailAppTypeScale.caption,
+    color: thumbnailAppColors.textMuted,
+  },
+  feedbackButtons: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  feedbackButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: thumbnailAppColors.surface,
+  },
+  feedbackButtonActive: {
+    backgroundColor: thumbnailAppColors.accent,
+  },
+  feedbackButtonText: {
+    fontSize: 18,
   },
   error: {
     color: thumbnailAppColors.statNegative,
