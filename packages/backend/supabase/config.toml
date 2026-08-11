@@ -1,0 +1,15 @@
+project_id = "r2q2-social-app"
+
+[api]
+enabled = true
+port = 54321
+
+[db]
+port = 54322
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+
+[edge_runtime]
+enabled = true

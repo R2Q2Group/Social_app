@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "Viziphy",
+    "slug": "viziphy",
+    "scheme": "viziphy",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "com.r2q2group.viziphy",
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "com.r2q2group.viziphy"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-dev-client"
+    ]
+  }
+}

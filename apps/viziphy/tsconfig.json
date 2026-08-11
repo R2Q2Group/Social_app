@@ -1,0 +1,10 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "paths": {
+      "@r2q2/ai-core": ["../../packages/ai-core/src"],
+      "@r2q2/design-tokens": ["../../packages/design-tokens/src"]
+    }
+  }
+}
