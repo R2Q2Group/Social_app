@@ -51,7 +51,7 @@ DraftToDeck, Slideframe, Carouselly, Pinspire (Pinterest-focused), Threadcraft
 ## 3. AI Architecture
 
 ### 3.1 Text & Structure Model
-- Claude 3.5 Haiku or GPT-4o-mini for drafting.
+- Claude Haiku 4.5 or GPT-4o-mini for drafting.
 - Output: structured JSON per slide/thumbnail (title, subtitle, bullet points, hook,
   callout type, suggested emphasis words).
 - Two distinct system prompts:
@@ -131,19 +131,16 @@ exit condition is met — this keeps Claude Code sessions resumable without cont
       restricted to the service role). Caller identity is a Supabase session,
       anonymous included, so this works ahead of the Gate 3.5 account system —
       an anonymous session upgrades to a real account later with no migration.
-- **Exit condition:** can POST an idea and receive valid structured JSON for both modes.
-      Code complete; not yet run end-to-end. Status as of 2026-08-10:
-      Docker Desktop installed (per-user install at
-      `%LOCALAPPDATA%\Programs\DockerDesktop`, CLI `docker.exe` v29.7.2,
-      not on PATH) but its daemon isn't responding yet — `docker info`
-      returns `500 Internal Server Error` reaching `dockerDesktopLinuxEngine`
-      (WSL2 backend not up). A PC restart is pending to resolve this.
-      **Resume from here:** after reboot, confirm Docker Desktop shows
-      "Running", then re-verify with `docker info`, then follow
-      `packages/backend/README.md`'s "Gate 1: testing the `draft` endpoint"
-      steps (`supabase start` → fill `supabase/functions/.env` → `supabase
-      functions serve draft` → curl both modes) to actually clear this
-      exit condition.
+- **Exit condition met (2026-08-10):** verified end-to-end against local Supabase
+      (`supabase start` + `supabase functions serve`) — both `carousel` and
+      `thumbnail` modes return valid, schema-validated JSON from a real
+      Anthropic call. Two bugs found and fixed during verification:
+      1. `packages/ai-core/src/*.ts` used extension-less relative imports
+         (`from "./client"`), which tsc/Node tolerate but Deno's edge runtime
+         requires explicit `.ts` extensions for — added them.
+      2. `packages/ai-core/src/client.ts` hardcoded `claude-3-5-haiku-20241022`,
+         retired 2026-02-19 (404 `not_found_error`) — updated to its
+         replacement, `claude-haiku-4-5`.
 
 ### Gate 2 — Carousel Renderer (MVP platform: pick one, e.g. LinkedIn)
 - [ ] Native vector slide renderer for one platform's aspect ratio + token set

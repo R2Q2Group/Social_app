@@ -12,6 +12,7 @@ build/
 
 # Supabase local
 packages/backend/supabase/.temp/
+packages/backend/supabase/.branches/
 
 # OS / editor
 .DS_Store

@@ -4,7 +4,7 @@ import type {
   SlideContent,
   ThumbnailDraft,
   ThumbnailVariant,
-} from "./types";
+} from "./types.ts";
 
 // Hand-rolled validation instead of a schema library: this package is
 // imported unmodified by both the Expo/Metro app and the Deno Edge Function,
