@@ -45,6 +45,13 @@ export default function Home() {
       style={styles.container}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
+      <Pressable
+        style={styles.accountLink}
+        onPress={() => router.push("/account")}
+      >
+        <Text style={styles.accountLinkText}>Account</Text>
+      </Pressable>
+
       <Text style={styles.title}>Viziphy</Text>
       <Text style={styles.subtitle}>
         Turn an idea into a carousel for LinkedIn, Instagram, X, TikTok,
@@ -84,6 +91,15 @@ const styles = StyleSheet.create({
     backgroundColor: carouselColors.background,
     padding: 24,
     justifyContent: "center",
+  },
+  accountLink: {
+    position: "absolute",
+    top: 24,
+    right: 24,
+  },
+  accountLinkText: {
+    color: carouselColors.textMuted,
+    fontSize: carouselTypeScale.body,
   },
   title: {
     fontSize: carouselTypeScale.hook,

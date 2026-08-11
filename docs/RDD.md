@@ -259,11 +259,65 @@ exit condition is met — this keeps Claude Code sessions resumable without cont
 ### Gate 3.5 — Shared Account Layer (moved up from Gate 5)
 Because Thumbwave and Viziphy need to share one R2Q2 account/BYOK/subscription
 system, this must exist before Gate 4 starts, not after Gate 3 as originally scoped.
-- [ ] R2Q2 account system (sign up/login, shared across apps)
-- [ ] BYOK key storage tied to account, not per-app
-- [ ] Subscription/entitlement check callable from any app in the family
-- **Exit condition:** a user logged into Viziphy has that same session/entitlement
-  recognized if Thumbwave is installed later.
+- [x] R2Q2 account system (sign up/login, shared across apps) — real
+      email/password auth on top of Gate 1's anonymous sessions, not a
+      separate system: `apps/viziphy/src/lib/auth.ts`'s
+      `upgradeAnonymousAccount()` calls `auth.updateUser({email, password})`
+      on the caller's existing anonymous session, which links the identity
+      in place (same `auth.uid()`, `is_anonymous` flips to `false`) rather
+      than minting a new user — so BYOK keys/usage/entitlement from the
+      anonymous period carry over with no migration step, exactly as the
+      Gate 1 exit note anticipated. `signInWithEmail()` /`signOut()` round
+      out the flow; `app/account.tsx` is the minimal UI that exercises all
+      of it. Local-only: `supabase/config.toml` gained
+      `[auth.email] enable_confirmations = false` so sign-up doesn't need a
+      real inbox in dev (revisit before linking a hosted project).
+- [x] BYOK key storage tied to account, not per-app — already true as of
+      Gate 1 (`byok_keys` keyed by `user_id`, not by app); Gate 3.5 doesn't
+      change that table, it just confirmed the same `user_id` is what a
+      second app in the family would see too, since every app shares one
+      Supabase project/`auth.users` table.
+- [x] Subscription/entitlement check callable from any app in the family —
+      `packages/backend/supabase/migrations/20260811000000_gate3_5_accounts.sql`
+      adds `public.entitlements` (`user_id` PK, `tier` free/pro, `status`,
+      RLS select-own) plus an `on_auth_user_created_entitlement` trigger
+      that seeds a default `free`/`active` row for every new `auth.users`
+      row (anonymous included, so the row already exists by the time that
+      session upgrades). `supabase/functions/entitlement/index.ts` is a
+      thin read-only endpoint: validates the caller's bearer JWT, returns
+      their `{tier, status}` under RLS — no service-role key needed for a
+      read. `apps/viziphy/src/lib/entitlement.ts` is the client wrapper.
+- **Exit condition met (2026-08-11):** verified end-to-end. Backend, via
+      curl against local Supabase: an anonymous session's entitlement reads
+      `free/active` immediately (trigger-seeded); upgrading that same
+      session to `gate35test@example.com`/password kept the same
+      `auth.uid()` and the same entitlement row (`is_anonymous` flipped to
+      `false`, `email` set); signing in with that email/password from a
+      *second*, unrelated anonymous-session client resolved to the same
+      `auth.uid()` and read the identical entitlement; flipping that row to
+      `tier=pro` directly in the DB (standing in for Gate 5's future
+      billing webhook) was immediately visible to that second-client
+      session, proving the "recognized from any app" requirement without
+      Thumbwave existing yet to test against; a third, unrelated anonymous
+      session read its own `free/active` row, not the first user's `pro`
+      one, confirming RLS isolation; a request with no Authorization header
+      correctly 401'd. Client, on the `Medium_Phone_API_36.1` Android
+      emulator against local Supabase: fresh anonymous session → Account
+      screen shows "This device: anonymous session" / "Plan: free
+      (active)" → Sign up creates `gate35ui@example.com` in place → screen
+      flips to "Signed in as gate35ui@example.com" with the same free/active
+      entitlement → Sign out returns to a fresh anonymous session → Sign in
+      with the same credentials succeeds. One real bug found and fixed
+      during verification: `getAccountState()` in `auth.ts` called
+      `supabase.auth.getUser()` directly without first calling
+      `ensureAnonymousSession()`, unlike every other identity-touching
+      function in the codebase. `account.tsx` calls it in `Promise.all`
+      alongside `getEntitlement()` (which *does* ensure a session first) —
+      on a cold Account-screen visit this raced the concurrent session
+      creation and read "no session yet" as `{email: null, isAnonymous:
+      false}`, rendering the signed-in/"Signed in as null" branch instead
+      of the anonymous sign-up form. Fixed by calling
+      `ensureAnonymousSession()` at the top of `getAccountState()` too.
 
 ### Gate 5 — Monetization Layer (per-app entitlement UI)
 - [ ] Pro subscription paywall (unlimited gen, watermark removal, brand fonts, hi-res export)

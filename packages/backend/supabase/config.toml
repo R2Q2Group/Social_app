@@ -14,6 +14,13 @@ site_url = "http://localhost:3000"
 # callers get an anonymous session before the Gate 3.5 account system exists.
 enable_anonymous_sign_ins = true
 
+[auth.email]
+# Local/dev only: skips the confirmation-link round trip so the
+# anonymous-session-upgrade and sign-up/sign-in flows (Gate 3.5) are
+# testable without a real inbox. Revisit before a hosted/production project
+# is linked -- production should require confirmation.
+enable_confirmations = false
+
 [edge_runtime]
 enabled = true
 
