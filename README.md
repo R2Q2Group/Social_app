@@ -25,5 +25,5 @@ packages/
 
 ## Gate status
 
-Currently on **Gate 0 — Foundation**. See `docs/RDD.md` Section 6 for the full
-gate roadmap and exit conditions.
+Gates 0-3 complete. Currently starting **Gate 3.5 — Shared Account Layer**. See
+`docs/RDD.md` Section 6 for the full gate roadmap and exit conditions.

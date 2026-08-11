@@ -47,7 +47,8 @@ export default function Home() {
     >
       <Text style={styles.title}>Viziphy</Text>
       <Text style={styles.subtitle}>
-        Turn an idea into a LinkedIn carousel.
+        Turn an idea into a carousel for LinkedIn, Instagram, X, TikTok,
+        Pinterest, or Facebook.
       </Text>
 
       <TextInput

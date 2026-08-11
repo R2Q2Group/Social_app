@@ -193,9 +193,57 @@ exit condition is met — this keeps Claude Code sessions resumable without cont
         defensive fallback.
 
 ### Gate 3 — Multi-Platform Carousel Expansion
-- [ ] Add remaining platform render targets from Section 4 (one at a time)
-- [ ] Per-platform text-density and aspect-ratio rule enforcement
-- **Exit condition:** all 6 carousel platforms render correctly from the same draft.
+- [x] Add remaining platform render targets from Section 4 (one at a time) —
+      `packages/design-tokens/src/carousel.ts`'s `carouselPlatforms` gained a
+      `layout` variant per platform (`accentBar` for LinkedIn/Facebook,
+      `centered` for Instagram, `statement` for X, `focal` for TikTok/Reels,
+      `topHeavy` for Pinterest); `apps/viziphy/src/render/LinkedInSlideCard.tsx`
+      was generalized into `SlideCard.tsx` (`platform` prop, one layout
+      component per variant, still SVG/RN-`Text` only — Skia stays unused).
+      `CarouselPreview`/`preview.tsx` gained a platform-chip picker so the
+      same drafted JSON re-renders across all 6 without a new AI call.
+- [x] Per-platform text-density and aspect-ratio rule enforcement —
+      `carouselPlatforms[platform].limits` (title/subtitle/bullet char caps,
+      max bullets) enforced render-side via
+      `apps/viziphy/src/render/textDensity.ts`'s `enforceTextDensity`
+      (truncates with an ellipsis; a 0 limit drops the field, e.g. X/TikTok
+      carry no bullets) rather than round-tripping the AI per platform.
+- **Exit condition met (2026-08-11):** verified end-to-end on the
+      `Medium_Phone_API_36.1` Android emulator against local Supabase — one
+      drafted idea rendered correctly across all 6 platform chips
+      (LinkedIn/Instagram/X/TikTok/Pinterest/Facebook), including truncated
+      text and correct aspect ratio per platform; PNG export verified via
+      the native share sheet. Three real bugs found and fixed during
+      verification:
+      1. X's `statement` layout absolutely-positioned its page indicator,
+         which overlapped the subtitle on X's short 16:9 card — replaced
+         with the same flex-column "content + indicator row" pattern the
+         other layouts already used successfully.
+      2. Portrait platforms (TikTok 9:16, Pinterest 2:3) could render taller
+         than the on-screen viewport; the horizontal `ScrollView` clips
+         vertical overflow, silently hiding the bottom of the card
+         (including the page indicator) instead of shrinking it.
+         `CarouselPreview` now measures its available height via `onLayout`
+         and fits the card to `min(widthBudget, heightBudget)`.
+      3. The platform-chip `ScrollView` in `preview.tsx` had no `style`
+         (only `contentContainerStyle`), so it stretched to fill the whole
+         flex column instead of sizing to its chip content — chips rendered
+         as full-height pills. Fixed with an explicit
+         `flexGrow: 0, flexShrink: 0` style. This compounded bug #2's
+         symptom (starved the carousel of vertical budget), so fixing both
+         together is what made TikTok's huge focal-layout font legible.
+      Known limitation carried forward, not a Gate 3 regression: batch PDF
+      export (`buildCarouselPdf` capturing all N slides in a loop) can hang
+      under Fabric — `react-native-view-shot`'s native capture throws
+      `AssertionException: Expected to run on UI thread!` inside
+      `FabricUIManager.resolveView` when invoked off the UI thread, and the
+      native promise never settles, so even `capture.ts`'s client-side
+      timeout (added in Gate 2 for the same underlying issue) doesn't always
+      recover it. Single-slide PNG export (same `captureSlidePng` call) is
+      solid. Multi-slide export robustness is explicitly Gate 6's scope
+      ("Batch export (all platforms from one draft in one action)" /
+      "export quality is App-Store-demo-ready") — deferred there rather than
+      patched here.
 
 ### Gate 4 — Thumbwave (standalone spinoff app)
 - [ ] Scaffold Thumbwave as its own app shell (`apps/thumbwave` package in the

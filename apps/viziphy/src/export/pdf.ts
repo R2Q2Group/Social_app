@@ -1,14 +1,11 @@
 import * as FileSystem from "expo-file-system";
 import * as Print from "expo-print";
-import { carouselPlatforms } from "@r2q2/design-tokens";
 import { parseAspectRatio } from "../render/aspectRatio";
 
-const ASPECT_RATIO = parseAspectRatio(carouselPlatforms.linkedin.aspectRatio);
-
 // expo-print defaults to US Letter/A4 — pin explicit page dimensions (in
-// points, 72/in) matching the 4:5 ratio, or every page comes out letterboxed.
+// points, 72/in) matching the platform's aspect ratio, or pages come out
+// letterboxed.
 const PAGE_WIDTH_PT = 540;
-const PAGE_HEIGHT_PT = Math.round(PAGE_WIDTH_PT / ASPECT_RATIO);
 
 async function toDataUri(pngUri: string): Promise<string> {
   const base64 = await FileSystem.readAsStringAsync(pngUri, {
@@ -18,8 +15,13 @@ async function toDataUri(pngUri: string): Promise<string> {
 }
 
 /** Combines per-slide PNGs into one multi-page PDF, one page per slide,
- * pages sized to the LinkedIn 4:5 ratio. */
-export async function buildCarouselPdf(pngUris: string[]): Promise<string> {
+ * pages sized to the given platform's aspect ratio (e.g. "4:5"). */
+export async function buildCarouselPdf(
+  pngUris: string[],
+  aspectRatio: string,
+): Promise<string> {
+  const ratio = parseAspectRatio(aspectRatio);
+  const PAGE_HEIGHT_PT = Math.round(PAGE_WIDTH_PT / ratio);
   const dataUris = await Promise.all(pngUris.map(toDataUri));
   const pages = dataUris
     .map((uri, i) => {

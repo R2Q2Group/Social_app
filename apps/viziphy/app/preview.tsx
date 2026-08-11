@@ -2,12 +2,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { carouselColors, carouselTypeScale } from "@r2q2/design-tokens";
+import {
+  carouselColors,
+  carouselPlatforms,
+  carouselTypeScale,
+  type CarouselPlatformKey,
+} from "@r2q2/design-tokens";
 import { CarouselPreview } from "../src/render/CarouselPreview";
 import { captureSlidePng } from "../src/export/capture";
 import { buildCarouselPdf } from "../src/export/pdf";
@@ -16,10 +22,22 @@ import { useDraft } from "../src/state/draftStore";
 
 type ExportState = { kind: "idle" } | { kind: "png" } | { kind: "pdf" };
 
+const PLATFORM_LABELS: Record<CarouselPlatformKey, string> = {
+  linkedin: "LinkedIn",
+  instagram: "Instagram",
+  xThreads: "X",
+  tiktokReelsCover: "TikTok/Reels",
+  pinterest: "Pinterest",
+  facebook: "Facebook",
+};
+
+const PLATFORM_KEYS = Object.keys(carouselPlatforms) as CarouselPlatformKey[];
+
 export default function Preview() {
   const router = useRouter();
   const { draft } = useDraft();
   const slideRefs = useRef<(View | null)[]>([]);
+  const [platform, setPlatform] = useState<CarouselPlatformKey>("linkedin");
   const [activeIndex, setActiveIndex] = useState(0);
   const [exportState, setExportState] = useState<ExportState>({ kind: "idle" });
   const [error, setError] = useState<string | null>(null);
@@ -65,7 +83,7 @@ export default function Preview() {
         }
         pngUris.push(await captureSlidePng(ref));
       }
-      const pdfUri = await buildCarouselPdf(pngUris);
+      const pdfUri = await buildCarouselPdf(pngUris, carouselPlatforms[platform].aspectRatio);
       await shareFile(pdfUri, "application/pdf", "Save carousel as PDF");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Export failed.");
@@ -78,8 +96,28 @@ export default function Preview() {
 
   return (
     <View style={styles.container}>
+      <ScrollView
+        style={styles.platformScroll}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.platformRow}
+      >
+        {PLATFORM_KEYS.map((key) => (
+          <Pressable
+            key={key}
+            onPress={() => setPlatform(key)}
+            style={[styles.chip, platform === key && styles.chipActive]}
+          >
+            <Text style={[styles.chipText, platform === key && styles.chipTextActive]}>
+              {PLATFORM_LABELS[key]}
+            </Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+
       <CarouselPreview
         draft={draft}
+        platform={platform}
         onSlideRef={handleSlideRef}
         onActiveIndexChange={setActiveIndex}
       />
@@ -125,6 +163,32 @@ const styles = StyleSheet.create({
     backgroundColor: carouselColors.background,
     paddingTop: 24,
     paddingBottom: 16,
+  },
+  platformScroll: {
+    flexGrow: 0,
+    flexShrink: 0,
+  },
+  platformRow: {
+    gap: 8,
+    paddingHorizontal: 24,
+    paddingBottom: 16,
+  },
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: carouselColors.surface,
+  },
+  chipActive: {
+    backgroundColor: carouselColors.accent,
+  },
+  chipText: {
+    fontSize: carouselTypeScale.caption,
+    fontWeight: "600",
+    color: carouselColors.textMuted,
+  },
+  chipTextActive: {
+    color: carouselColors.background,
   },
   error: {
     color: carouselColors.statNegative,

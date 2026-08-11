@@ -4,17 +4,21 @@ import {
   StyleSheet,
   View,
   useWindowDimensions,
+  type LayoutChangeEvent,
   type NativeSyntheticEvent,
   type NativeScrollEvent,
 } from "react-native";
-import { carouselColors } from "@r2q2/design-tokens";
+import { carouselColors, carouselPlatforms, type CarouselPlatformKey } from "@r2q2/design-tokens";
 import type { CarouselDraft } from "@r2q2/ai-core";
-import { LinkedInSlideCard } from "./LinkedInSlideCard";
+import { SlideCard } from "./SlideCard";
+import { parseAspectRatio } from "./aspectRatio";
 
 const SLIDE_SIDE_PADDING = 24;
+const SLIDE_VERTICAL_PADDING = 16;
 
 export interface CarouselPreviewProps {
   draft: CarouselDraft;
+  platform: CarouselPlatformKey;
   /** Called as each slide mounts/unmounts, so the caller (export flow) can
    * capture a specific slide's rendered View by index. */
   onSlideRef?: (index: number, ref: View | null) => void;
@@ -25,13 +29,31 @@ export interface CarouselPreviewProps {
 
 export function CarouselPreview({
   draft,
+  platform,
   onSlideRef,
   onActiveIndexChange,
 }: CarouselPreviewProps) {
   const { width: windowWidth } = useWindowDimensions();
   const [activeIndex, setActiveIndex] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(0);
   const pageWidth = windowWidth;
-  const slideWidth = windowWidth - SLIDE_SIDE_PADDING * 2;
+
+  // Portrait platforms (TikTok 9:16, Pinterest 2:3) can render taller than
+  // the space available on screen — a horizontal ScrollView clips vertical
+  // overflow, which would hide the bottom of the card (including the page
+  // indicator) rather than shrinking it. Fit the card within whichever of
+  // width/height is more constraining, so it's always fully visible.
+  const aspectRatio = parseAspectRatio(carouselPlatforms[platform].aspectRatio);
+  const widthBudget = windowWidth - SLIDE_SIDE_PADDING * 2;
+  const heightBudget =
+    containerHeight > 0
+      ? Math.max(containerHeight - SLIDE_VERTICAL_PADDING * 2, 0) * aspectRatio
+      : widthBudget;
+  const slideWidth = Math.min(widthBudget, heightBudget);
+
+  const handleContainerLayout = (e: LayoutChangeEvent) => {
+    setContainerHeight(e.nativeEvent.layout.height);
+  };
 
   useEffect(() => {
     onActiveIndexChange?.(activeIndex);
@@ -39,6 +61,13 @@ export function CarouselPreview({
     // caller should memoize it) — only re-run when the index itself changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeIndex]);
+
+  // The ScrollView remounts on platform change (see `key={platform}` below)
+  // and resets its own scroll offset — mirror that here so activeIndex
+  // doesn't keep pointing at a slide the ScrollView no longer shows.
+  useEffect(() => {
+    setActiveIndex(0);
+  }, [platform]);
 
   const handleMomentumScrollEnd = (
     e: NativeSyntheticEvent<NativeScrollEvent>,
@@ -50,20 +79,26 @@ export function CarouselPreview({
   return (
     <View style={styles.container}>
       <ScrollView
+        // Remount on platform switch: each platform has its own aspect
+        // ratio, so a preserved scroll offset would land mid-slide.
+        key={platform}
+        style={styles.scrollView}
         horizontal
         pagingEnabled
         decelerationRate="fast"
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={handleMomentumScrollEnd}
+        onLayout={handleContainerLayout}
       >
         {draft.slides.map((slide, index) => (
-          <View key={index} style={{ width: pageWidth, alignItems: "center" }}>
-            <LinkedInSlideCard
+          <View key={index} style={{ width: pageWidth, alignItems: "center", justifyContent: "center" }}>
+            <SlideCard
               ref={(ref) => onSlideRef?.(index, ref)}
               slide={slide}
               index={index}
               total={draft.slides.length}
               width={slideWidth}
+              platform={platform}
             />
           </View>
         ))}
@@ -86,6 +121,9 @@ export function CarouselPreview({
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  scrollView: {
     flex: 1,
   },
   dots: {
