@@ -107,6 +107,25 @@ DraftToDeck, Slideframe, Carouselly, Pinspire (Pinterest-focused), Threadcraft
 Each gate has an explicit exit condition. Do not start a gate until the prior one's
 exit condition is met — this keeps Claude Code sessions resumable without context loss.
 
+**Status as of 2026-08-11:** Gates 0 through 4 are done, including Gate 3.5
+(pulled forward). **Resume from Gate 5** (per-app monetization UI — Pro
+paywall, BYOK settings, free-tier usage display; the underlying
+account/entitlement system was already built in Gate 3.5). Nothing is
+blocked; this is a plain session boundary, not an interrupted gate.
+
+Practical notes for picking back up: local Supabase (`supabase start` in
+`packages/backend`) and each app's Metro dev server (`expo start
+--dev-client` in `apps/viziphy` or `apps/thumbwave`) do not survive a
+session/PC restart and need to be started fresh — see
+`packages/backend/README.md` and the per-gate verification notes below for
+exact steps. Gate 4's exit condition also flagged one unverified detail
+worth a real device/manual pass: Thumbwave's face-cutout render path
+(`SvgImage` + circular `ClipPath` + stroked ring in
+`apps/thumbwave/src/render/ThumbnailCard.tsx`) is implemented and
+type-checked but was never visually confirmed with an actual selected
+photo — emulator automation couldn't complete a selection in the system
+Photo Picker.
+
 ### Gate 0 — Foundation
 - [x] Finalize app name
 - [x] Init local repo at `D:\Social_Media_app`, connect to
