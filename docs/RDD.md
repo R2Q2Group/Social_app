@@ -116,7 +116,16 @@ user**: the feedback loop is built and verified, and a real local Android
 build proves the release pipeline works, but TestFlight/Play Store internal
 testing — and thus the gate's actual exit condition — needs Apple
 Developer/Google Play Console account access and an `eas login` this
-session has no credentials for.
+session has no credentials for. The app now runs on a **real Android
+phone** against local Supabase over home WiFi (first non-emulator
+verification), which took a four-part networking fix documented under
+Gate 7. **One open bug carried into the next session:** text is truncated
+mid-word on slide 1 — a fix is committed and verified correct in isolation
+but *not* yet confirmed on-device; see the last Gate 7 bullet for the full
+state, including two verification mistakes not to repeat. The user plans
+to run Google Play setup (not Apple — company entity needs sorting first);
+what Play Console needs from them is listed in that same bullet's
+surrounding notes.
 Highlights, in the order they came up:
 
 1. **The previous session's stuck build was exactly what it looked like —
@@ -887,6 +896,70 @@ system, this must exist before Gate 4 starts, not after Gate 3 as originally sco
       a product decision on real external testers before "external users"
       can be literally true. None of this is guessable or safe to
       provision unattended.
+      **Google Play specifically** (user's stated next step as of
+      2026-08-11; Apple is deferred until the company entity is sorted out,
+      since Apple's org enrollment needs a D-U-N-S number and a real legal
+      entity — Play has no equivalent hurdle for internal testing). What
+      Play Console needs, none of which this session can provision:
+      a developer account ($25 one-time, user's identity/payment — personal
+      or organization both work for internal testing); the package name,
+      already fixed as `com.r2q2group.viziphy` and **permanent after first
+      upload**, so worth confirming before that point; a minimum store
+      listing (name, icon, category, contact email, and a **real privacy
+      policy URL** — non-optional even for internal-testing-only, and it
+      has to be honest about the account system and BYOK key storage from
+      Gates 1/3.5); a signing decision — **no release keystore has been
+      generated on purpose**, since that key becomes the app's permanent
+      store identity and losing it means never being able to update the
+      app again (recommend opting into Play App Signing, where Google holds
+      the permanent key and only a replaceable upload key is generated
+      locally); and an `.aab` rather than the `.apk` built here for
+      sideloading (`./gradlew bundleRelease`, same pipeline/env-var caveats
+      as `assembleRelease`). Separately, the automated build+submit path
+      would need a Google Cloud **service account JSON key** with Play
+      Console API access — a real credential, only worth sharing if the
+      user actively wants automated submission rather than uploading
+      through the console web UI themselves.
+- [ ] **Open at end of session (2026-08-11): mid-word truncation on the
+      hook/slide 1.** Real-device testing surfaced that generated text is
+      cut mid-word with an ellipsis (observed: "…become expe…" where the
+      source hook was "What if you could catch water leaks before they
+      become expensive?"). Root cause is `truncate()` in
+      `apps/viziphy/src/render/textDensity.ts`, which sliced at a raw
+      character count (`limits.title`, 60 for LinkedIn) with no regard for
+      word boundaries. Fixed to back up to the last space before the cut,
+      with a guard that keeps the raw character cut when backing up would
+      discard more than ~60% of the budget (a single very long word, or a
+      very tight limit like TikTok's 30). **Verified the logic directly in
+      node against the exact observed string** — correctly yields "What if
+      you could catch water leaks before they become…". **Not yet
+      confirmed on-device:** the first rebuilt APK still showed the
+      mid-word cut on slide 1 (slides 2-4 looked right). Two verification
+      mistakes worth not repeating: (1) `grep`ing the packaged bundle for
+      `"lastIndexOf"` as proof the fix shipped is meaningless — release
+      bundles are **Hermes bytecode** (`hermesEnabled=true`; magic bytes
+      `c61fbc03`), not readable JS, so common builtin names match by
+      coincidence; (2) the bundle being newer than the source file only
+      proves *a* rebuild happened, not that Metro's transform cache was
+      invalidated. Leading hypothesis is therefore a stale Metro transform
+      cache rather than a logic bug. Acted on that at session end: cleared
+      `%TEMP%/metro-cache` plus every `createBundleReleaseJsAndAssets`
+      intermediate and reran with `--rerun-tasks` — `BUILD SUCCESSFUL`
+      with all 1087 tasks genuinely re-executed (nothing `UP-TO-DATE`), and
+      that APK is the one now sitting at
+      `apps/viziphy/dist/viziphy-internal.apk`. **Next session:** install
+      *that* APK on the real phone and re-check slide 1 — this specific
+      build has never been tested on-device. If it
+      *still* truncates mid-word, the fix is not reaching the device and
+      the next thing to check is whether `enforceTextDensity` is even the
+      code path producing that particular ellipsis — note React Native's
+      own `numberOfLines` clipping produces a visually identical "…" and
+      would need a font-size/layout fix instead, not a string fix.
+      Worth considering regardless: the AI prompt could ask for a hook
+      under the tightest platform's char budget so truncation is rare
+      rather than routine — currently one draft is generated and reused
+      across all 6 platforms (deliberate, one AI call not six), with the
+      per-platform limits applied client-side afterward.
 
 ### Gate 8 — Scale & Analytics
 - [ ] Usage analytics (which platforms/styles are most generated)
