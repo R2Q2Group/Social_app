@@ -107,13 +107,12 @@ DraftToDeck, Slideframe, Carouselly, Pinspire (Pinterest-focused), Threadcraft
 Each gate has an explicit exit condition. Do not start a gate until the prior one's
 exit condition is met — this keeps Claude Code sessions resumable without context loss.
 
-**Status as of 2026-08-11 (evening session):** Gates 0 through 5 are done,
-including Gate 3.5 (pulled forward). **Gate 6 is implementation-complete and
-device-verified end-to-end, except batch export** — five of the six exit
-checklist items passed cleanly; batch export completes without hanging but
-produces a corrupt `.zip` (see its own entry below). Two real bugs were
-found and fixed during verification; one real bug was found, diagnosed, and
-is documented but not fixed (jszip). Highlights, in the order they came up:
+**Status as of 2026-08-11 (night session):** Gates 0 through 6 are done,
+including Gate 3.5 (pulled forward). **Gate 6's exit condition is now met** —
+the prior session's one open item, batch export's corrupt `.zip`, is fixed
+(jszip replaced with fflate) and device-verified; all six exit checklist
+items now pass. **Gate 7 (Beta Launch) is next and hasn't started.**
+Highlights, in the order they came up:
 
 1. **The previous session's stuck build was exactly what it looked like —
    machine resource contention, not a broken build — but recovering from it
@@ -168,15 +167,47 @@ is documented but not fixed (jszip). Highlights, in the order they came up:
    low-end-emulator artifact rather than a real-device risk, but it's worth
    a real low-RAM-device pass before shipping batch export, since mounting
    all 6 platforms' hi-res slides at once is a genuinely heavy approach.
-5. **Batch export's `.zip` output is corrupt — a real, unresolved bug.**
-   Once the ref-race (bug #2) and the memory ceiling (bug #4) were both out
-   of the way, batch export reliably completes and offers a `.zip` through
-   the share sheet — but the file itself doesn't open. See the dedicated
-   note under Gate 6's batch-export bullet and the code comment in
-   `apps/viziphy/src/export/batch.ts` for the full diagnosis; the short
-   version is that it's inside `jszip`'s own `generateAsync()`, confirmed
-   independent of every read/write encoding choice on this call site, and
-   likely needs a different zip library rather than a fix here.
+5. **Batch export's `.zip` output was corrupt — root-caused to jszip,
+   fixed by replacing it.** Once the ref-race (bug #2) and the memory
+   ceiling (bug #4) were both out of the way, the prior session diagnosed
+   the corruption as internal to `jszip`'s own `generateAsync()` (see the
+   Gate 5 session's notes, preserved in git history) — its "binary string"
+   internal encoding (one JS string char = one byte) was the leading
+   hypothesis for why it corrupted specifically under RN/Hermes despite
+   working in jszip's own browser/Node test environments. This session
+   swapped it for `fflate` (`zipSync`, real `Uint8Array` throughout, no
+   binary-string intermediate) plus `base64-js` for the RN-side base64
+   conversion `expo-file-system`'s classic API requires — same call site in
+   `apps/viziphy/src/export/batch.ts`, no changes needed elsewhere.
+   **Confirmed fixed (2026-08-11, night session):** ran a live Pro-tier
+   6-platform hi-res batch export on-device, pulled the resulting `.zip` off
+   the emulator, and verified it with both tools that rejected the jszip
+   output — 7-Zip's `7z t` reports "Everything is Ok" (6 files, correct
+   compressed/uncompressed sizes) and .NET's `ZipFile.OpenRead` opens it and
+   enumerates all 6 entries cleanly. Extracted all 6 PDFs and confirmed each
+   has a valid `%PDF-1.4` header and `startxref`/`%%EOF` trailer.
+6. **Pulling the on-device `.zip` for verification via `adb shell ... cat >
+   file` silently corrupted it — 12KB larger than the source, and it's not
+   a jszip-class bug.** First verification attempt reported a size mismatch
+   against the on-device `ls`; re-pulling the identical bytes with `adb
+   exec-out` instead of `adb shell` (which is documented to apply
+   line-ending/text-mode translation to stdout on some platforms, unlike
+   `exec-out`) produced a byte-exact copy. Worth remembering for any future
+   on-device binary-file pull: prefer `adb exec-out` (or `adb pull`) over
+   `adb shell ... cat`, and diff sizes against `ls` on-device before trusting
+   a pulled binary.
+7. **Port 8081 was held by an unrelated project's stale Metro process, not
+   a leftover from this repo.** Starting Viziphy's dev client hit Expo's
+   usual "port in use" prompt; `netstat`/`tasklist` traced the PID to `node
+   ... expo/bin/cli start` running from `D:\R2Q2_APP_build\r2q2-options-app`
+   — a different project entirely, not a stale process from a prior session
+   of this one. Killing another project's live process without asking
+   wasn't warranted, so Viziphy's Metro ran on port 8090 instead
+   (`--port 8090`), with an explicit `adb reverse tcp:8090 tcp:8090` (not
+   needed on the default port, which Expo's CLI sets up automatically only
+   when it recognizes the attached device at startup) and the usual
+   force-stop + deep-link reload from Gate 5's playbook, pointed at
+   `:8090` instead of `:8081`.
 
 Practical notes for picking back up: local Supabase (`supabase start` in
 `packages/backend`) and each app's Metro dev server (`expo start
@@ -621,16 +652,17 @@ system, this must exist before Gate 4 starts, not after Gate 3 as originally sco
       downgrade/upgrade (via Gate 5's `downgrade_to_free()`/
       `upgrade_to_pro()` dev-mock RPCs) and re-confirmed the lock state
       flips correctly both directions, not just on a fresh free account.
-- [ ] Batch export (all platforms from one draft in one action) — new
+- [x] Batch export (all platforms from one draft in one action) — new
       `apps/viziphy/src/export/batch.ts`'s `buildBatchExportZip`: renders
       all 6 platforms via `HiResExporter` (same off-screen mechanism as
       above, at the tier-appropriate width), builds one multi-page PDF per
       platform through the existing `buildCarouselPdf`, and zips them with
-      `jszip` (pure-JS, no native module — confirmed it doesn't pull in a
-      DOM/Node-only code path: `support.js`'s `Blob`/`self` probing is
-      guarded by try/catch and its one hard dependency, `readable-stream`,
-      is a real npm package Metro can resolve, not a Node builtin). Shared
-      as a single `.zip` via one `expo-sharing` share-sheet action.
+      `fflate`'s `zipSync` (pure-JS, no native module, operates on real
+      `Uint8Array`s throughout — see the fix note below for why this
+      replaced the original `jszip` choice) plus `base64-js` for the
+      RN-side base64⇄bytes conversion `expo-file-system`'s classic API
+      needs. Shared as a single `.zip` via one `expo-sharing` share-sheet
+      action.
       Available to both tiers (free at `STANDARD_EXPORT_WIDTH`, Pro at
       `HI_RES_EXPORT_WIDTH`) — RDD Section 5 doesn't list it as a Pro-only
       perk, only hi-res export and brand fonts are.
@@ -653,38 +685,29 @@ system, this must exist before Gate 4 starts, not after Gate 3 as originally sco
       `adb logcat`), but every occurrence recovered on retry — batch export
       completed without hanging in every attempt this session, on both a
       2GB and a 4GB-RAM emulator.
-      **Not working — confirmed unresolved bug (2026-08-11):** the produced
-      `.zip` is corrupt. It shares successfully through the native share
-      sheet (a real file, plausible size, correct name) but neither 7-Zip
-      nor .NET's `ZipFile` can open it — "Is not archive." Diagnosed by
-      hand: the End-Of-Central-Directory record's recorded central-directory
-      offset points at a run of zero bytes, not a real header, and scanning
-      backward from the EOCD finds only *one* valid directory-entry
-      signature (the last file's) where six are expected — several KB of
-      data is unaccounted for relative to jszip's own offset bookkeeping.
-      Systematically ruled out every read/write encoding combination on
-      this call site (base64-string vs. raw-`Uint8Array`, on both the
-      per-PDF input side and the final zip's output side, using
-      `expo-file-system`'s classic API and its newer `File`
-      read-bytes/write-bytes API) — the corruption reproduced identically
-      every time, which places the fault inside `zip.generateAsync()`
-      itself, not in how bytes get in or out of it. Leading hypothesis
-      (documented in code at `apps/viziphy/src/export/batch.ts`, not
-      confirmed further): jszip encodes zip metadata internally as "binary
-      strings" (one JS string character = one byte via
-      `String.fromCharCode`), a pattern that corrupts if anything in the
-      pipeline treats one of those strings as UTF-8 — plausible under
-      Hermes/RN in a way it wouldn't be in jszip's native
-      browser/Node.js test environments. A real fix likely means patching
-      or replacing jszip (e.g. a native zip module, which would need its
-      own native rebuild) rather than anything at this call site.
+      **Fixed (2026-08-11, night session) — the produced `.zip` was
+      corrupt, root-caused to `jszip` itself, resolved by switching zip
+      libraries.** The prior session's diagnosis (preserved in git history)
+      found neither 7-Zip nor .NET's `ZipFile` could open the `jszip`
+      output — "Is not archive" — with the fault isolated to
+      `zip.generateAsync()` itself after ruling out every read/write
+      encoding combination on this call site; leading hypothesis was
+      `jszip`'s internal "binary string" encoding (one JS string char = one
+      byte via `String.fromCharCode`) getting corrupted somewhere under
+      RN/Hermes. Rather than patch `jszip`'s internals, this session
+      replaced it with `fflate`, which operates on real `Uint8Array`s
+      throughout with no binary-string intermediate to corrupt — see the
+      task checkbox above for the call-site change. **Confirmed fixed:** a
+      live Pro-tier 6-platform hi-res batch export pulled off-device opened
+      cleanly in both 7-Zip (`7z t`: "Everything is Ok", 6 files) and
+      .NET's `ZipFile.OpenRead` (enumerated all 6 entries), and every
+      extracted PDF had a valid `%PDF-1.4` header and `%%EOF` trailer.
       Single-platform PDF export (`buildCarouselPdf`, used directly by
-      `handleExportPdf` above) doesn't go through jszip and is unaffected —
-      this bug is isolated to the batch/zip path.
+      `handleExportPdf` above) never went through the zip layer and was
+      unaffected throughout.
 - **Exit condition:** export quality is App-Store-demo-ready.
-      **Not yet met — batch export is broken.** `npx tsc --noEmit` is clean
-      on `apps/viziphy`. Device verification is otherwise complete
-      (2026-08-11) — 5 of 6 checklist items below passed:
+      **Met (2026-08-11, night session).** `npx tsc --noEmit` is clean on
+      `apps/viziphy`. All 6 device-verification checklist items pass:
       1. [x] `adb devices` responds quickly — root cause of the prior
          session's stuck build confirmed as machine resource contention;
          recovering from it also surfaced a quick-boot-snapshot trap (see
@@ -696,22 +719,12 @@ system, this must exist before Gate 4 starts, not after Gate 3 as originally sco
          3780×4725).
       4. [x] Font picker locks correctly for free, unlocks and visibly
          changes on-screen typography for Pro, across two layout variants.
-      5. [ ] **Batch export produces a `.zip`, and doesn't hang — but the
-         `.zip` itself is corrupt and won't open in 7-Zip or .NET's
-         `ZipFile`.** Not a regression of Gate 3's documented hang risk
-         (`captureSlidesSequentially`'s retry logic is confirmed sufficient
-         for that); a distinct, newly-found bug inside `jszip`. Full
-         diagnosis in this gate's batch-export bullet above and in code at
-         `apps/viziphy/src/export/batch.ts`. This is the one item blocking
-         Gate 6's exit condition.
+      5. [x] Batch export produces a valid `.zip` that doesn't hang and
+         opens cleanly in both 7-Zip and .NET's `ZipFile` — see the fix
+         note in this gate's batch-export bullet above.
       6. [x] `downgrade_to_free()`/`upgrade_to_pro()` round-trip brand
          font/hi-res gating correctly through a live tier change, not just
          on a fresh account.
-      **Next session:** fix or replace the zip layer for batch export (see
-      the diagnosis — likely swapping `jszip` for a native zip module,
-      which will need its own `expo run:android` rebuild), then re-run just
-      checklist item 5 to close out this gate. Everything else above is
-      confirmed and shouldn't need re-verification unless touched again.
 
 ### Gate 7 — Beta Launch
 - [ ] TestFlight/internal Android build
