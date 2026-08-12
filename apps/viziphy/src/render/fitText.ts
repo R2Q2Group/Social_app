@@ -69,3 +69,73 @@ export function fitFontSizeToWidth(
   const fittedSize = (availableWidth * FIT_SAFETY_MARGIN) / widestUnitWidth;
   return Math.max(minFontSize, Math.min(baseFontSize, fittedSize));
 }
+
+// Body content auto-fit (Gate 7): a layout's heading gets a width-fit above,
+// but a long hook+title+subtitle+bullets combo can still be *taller* than
+// the space left for it, overflowing into the page indicator/watermark
+// below (RN doesn't clip a flex item's overflowing children to its
+// allocated box, only an ancestor with `overflow: hidden` does, so the
+// overflow renders on top of whatever comes after it in the tree). This
+// estimates stacked text height the same way `fitFontSizeToWidth` estimates
+// word width, so supporting text can shrink to fit instead.
+
+/** Estimated number of wrapped lines `text` occupies at `fontSize` within
+ * `availableWidth`, via the same greedy word-wrap simulation the browser/RN
+ * layout engine performs -- approximate, not pixel-exact, which is enough to
+ * budget vertical space. */
+export function estimateWrappedLineCount(
+  text: string,
+  fontSize: number,
+  availableWidth: number,
+): number {
+  if (!text) return 0;
+  if (availableWidth <= 0) return 1;
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return 0;
+
+  const spaceWidth = estimateTextWidth(" ", fontSize);
+  let lines = 1;
+  let lineWidth = 0;
+  for (const word of words) {
+    const wordWidth = estimateTextWidth(word, fontSize);
+    const nextWidth = lineWidth === 0 ? wordWidth : lineWidth + spaceWidth + wordWidth;
+    if (nextWidth > availableWidth && lineWidth > 0) {
+      lines += 1;
+      lineWidth = wordWidth;
+    } else {
+      lineWidth = nextWidth;
+    }
+  }
+  return lines;
+}
+
+export interface HeightBlock {
+  text: string;
+  fontSize: number;
+  /** Line height as a multiple of `fontSize`, matching the block's real style. */
+  lineHeight: number;
+  availableWidth: number;
+  marginTop?: number;
+}
+
+/** Scale factor (<=1) to shrink `blocks`' font sizes by so their estimated
+ * stacked height fits `availableHeight`. Returns 1 when they already fit.
+ * Never returns below `minScale` -- shrinking supporting text below
+ * legibility is worse than a layout's `overflow: hidden` backstop clipping
+ * a little of it, the same trade-off `fitFontSizeToWidth` makes for
+ * headings. */
+export function fitScaleToHeight(
+  blocks: HeightBlock[],
+  availableHeight: number,
+  minScale = 0.6,
+): number {
+  if (availableHeight <= 0) return minScale;
+
+  const naturalHeight = blocks.reduce((sum, block) => {
+    const lines = estimateWrappedLineCount(block.text, block.fontSize, block.availableWidth);
+    return sum + (block.marginTop ?? 0) + lines * block.fontSize * block.lineHeight;
+  }, 0);
+  if (naturalHeight <= availableHeight || naturalHeight <= 0) return 1;
+
+  return Math.max(minScale, availableHeight / naturalHeight);
+}

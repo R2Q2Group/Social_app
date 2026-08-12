@@ -997,30 +997,50 @@ system, this must exist before Gate 4 starts, not after Gate 3 as originally sco
       `carouselColors.textMuted` (`#9AA1AE`), an existing token rather than
       a new color. Thumbwave has no dot indicator, so there was nothing to
       mirror.
-- [ ] **Open (found 2026-08-11, not yet fixed): slide content overflows and
-      collides with the page indicator and watermark on text-heavy drafts.**
+- [x] **Fixed (2026-08-11, later session): slide content overflowed and
+      collided with the page indicator and watermark on text-heavy drafts.**
       On LinkedIn's `accentBar` layout with a long hook + title + subtitle +
-      bullets, the subtitle runs underneath both the `1 / N` page indicator
-      and the "Made with Viziphy" watermark, so all three overlap and become
-      hard to read. Visible in the user's original pre-fix screenshot
-      ("Made with Viziphy" over "Early detection technology that") and
-      reproduced on the phone after both text fixes landed, so it is
-      independent of them and pre-existing rather than a regression.
+      bullets, the subtitle ran underneath both the `1 / N` page indicator
+      and the "Made with Viziphy" watermark, so all three overlapped and
+      became hard to read. Visible in the user's original pre-fix screenshot
+      ("Made with Viziphy" over "Early detection technology that").
       Mechanism: `styles.watermark` is `position: absolute` pinned to the
       card's bottom-right, and `styles.content` is a `space-between` column
-      whose `body` child is unconstrained — when the drafted text is taller
-      than the card, `body` overruns the space reserved for the indicator
-      instead of the text being shrunk or clipped, and the card's
-      `overflow: hidden` just crops whatever lands outside.
-      Worth fixing before store screenshots: the watermark is a *free-tier*
-      element rendered as a normal child specifically so `captureRef` bakes
-      it into exports (Gate 5), which means this collision ships inside
-      exported PNG/PDF output too, not just the on-screen preview — directly
-      relevant to Gate 6's "export quality is App-Store-demo-ready" exit
-      condition. Likely fix is the same family as the heading auto-fit added
-      above (constrain/scale the body to the available height) rather than
-      nudging the watermark, since moving the watermark alone would still
-      leave the indicator overlapping.
+      whose `body` child was unconstrained — when the drafted text was taller
+      than the card, `body` overran the space reserved for the indicator
+      instead of the text being shrunk or clipped, and RN doesn't clip a
+      flex item's overflowing children to its own box (only an ancestor with
+      `overflow: hidden` does), so the overflow rendered on top of whatever
+      came after it in the tree.
+      Fixed with the same family as the heading auto-fit (`fitText.ts`):
+      added `estimateWrappedLineCount()` (greedy word-wrap simulation reusing
+      `estimateTextWidth`) and `fitScaleToHeight()`, which estimates the
+      stacked height of a layout's supporting text (secondary title,
+      subtitle, bullets — deliberately not the heading, already width-fit)
+      and returns a scale factor so it fits the height actually left after
+      the heading/caption/page-indicator take their share. `AccentBarLayout`
+      applies the scale to font sizes and spacing; `Bullets` gained optional
+      `fontSize`/`marginTop` props to receive it. `styles.body` also gained
+      `overflow: "hidden"` as a hard backstop, so even if the estimate is
+      off, excess content clips inside body's own box instead of rendering
+      on top of the indicator/watermark — the same "estimate leans safe,
+      never re-introduces the original defect" philosophy as the heading fit.
+      **Verified:** `npx tsc --noEmit` clean. Math sanity-checked with a
+      synthetic worst-case draft (max-length hook/title/subtitle/3 bullets on
+      a 340-wide LinkedIn card) in a standalone script mirroring the
+      estimator — confirmed it correctly drives `bodyScale` down to the 0.6
+      floor rather than mis-estimating a scale that still overflows, and
+      that a short draft leaves `scale` at `1` (no unnecessary shrinking).
+      On-device: cold-booted the `Medium_Phone_API_36.1` emulator (the
+      previous session's stuck-`sensors-service` trap recurred on a
+      quick-boot relaunch — same fix as before, `-no-snapshot-load`),
+      generated a real 5-slide LinkedIn draft from local Supabase with a
+      deliberately dense idea (hook+title+subtitle+3 bullets on every
+      slide), and swiped through all 5: every slide, including three with a
+      3-4 line heading plus a full subtitle and 3 bullets, rendered with a
+      clean gap above the page indicator/watermark — no overlap, and normal
+      (non-dense) slides showed no visible shrinking, confirming the fix
+      doesn't regress the common case.
 - [ ] **Superseded detail, kept for context: mid-word truncation on the
       hook/slide 1.** Real-device testing surfaced that generated text is
       cut mid-word with an ellipsis (observed: "…become expe…" where the

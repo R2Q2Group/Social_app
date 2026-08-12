@@ -10,11 +10,18 @@ import {
 import type { SlideContent } from "@r2q2/ai-core";
 import { parseAspectRatio } from "./aspectRatio";
 import { enforceTextDensity } from "./textDensity";
-import { fitFontSizeToWidth } from "./fitText";
+import { fitFontSizeToWidth, fitScaleToHeight, estimateWrappedLineCount, type HeightBlock } from "./fitText";
 import { brandTextStyle, type BrandFontKey } from "../fonts";
 
 const ACCENT_BAR_WIDTH = 6;
 const PADDING = 24;
+// Approximate space a bullet's "• " mark + its row's marginRight claims,
+// so bullet-text height/width budgeting doesn't assume the full row width.
+const BULLET_MARK_RESERVED_WIDTH = 24;
+// Matches styles.body's marginTop below -- named so AccentBarLayout's
+// height budgeting can reference the same number without reaching into the
+// StyleSheet.create output (RegisteredStyle<T> isn't guaranteed to expose it).
+const BODY_MARGIN_TOP = 16;
 
 // RDD.md's carousel tokens don't define per-calloutType colors — map the
 // AI-generated calloutType values (attention/warning/insight/action, per
@@ -93,19 +100,39 @@ function Bullets({
   accentColor,
   align = "left",
   fontFamily,
+  fontSize = carouselTypeScale.body,
+  marginTop,
 }: {
   bullets?: string[];
   accentColor: string;
   align?: "left" | "center";
   fontFamily?: BrandFontKey;
+  /** Gate 7: scaled down by AccentBarLayout's body-height auto-fit on
+   * text-heavy drafts; other layouts render at the default body size. */
+  fontSize?: number;
+  marginTop?: number;
 }) {
   if (!bullets || bullets.length === 0) return null;
   return (
-    <View style={[styles.bullets, align === "center" && styles.bulletsCentered]}>
+    <View
+      style={[
+        styles.bullets,
+        align === "center" && styles.bulletsCentered,
+        marginTop !== undefined && { marginTop },
+      ]}
+    >
       {bullets.map((bullet, i) => (
         <View key={i} style={styles.bulletRow}>
-          <Text style={[styles.bulletMark, { color: accentColor }]}>{"•"}</Text>
-          <Text style={[styles.bulletText, brandTextStyle(fontFamily, "regular")]}>{bullet}</Text>
+          <Text style={[styles.bulletMark, { color: accentColor, fontSize }]}>{"•"}</Text>
+          <Text
+            style={[
+              styles.bulletText,
+              brandTextStyle(fontFamily, "regular"),
+              { fontSize, lineHeight: fontSize * 1.4 },
+            ]}
+          >
+            {bullet}
+          </Text>
         </View>
       ))}
     </View>
@@ -127,15 +154,66 @@ interface LayoutProps {
 /** LinkedIn/Facebook: professional, left accent bar, stacked hook/title/subtitle/bullets. */
 function AccentBarLayout({ cardRef, slide, index, total, width, height, accentColor, showWatermark, fontFamily }: LayoutProps) {
   const heading = slide.hook || slide.title;
+  const bodyWidth = width - ACCENT_BAR_WIDTH - PADDING * 2;
+  const headingFontSize = fitFontSizeToWidth(
+    heading,
+    slide.hook ? carouselTypeScale.hook : carouselTypeScale.title,
+    bodyWidth,
+  );
   const headingStyle: TextStyle = {
-    fontSize: fitFontSizeToWidth(
-      heading,
-      slide.hook ? carouselTypeScale.hook : carouselTypeScale.title,
-      width - ACCENT_BAR_WIDTH - PADDING * 2,
-    ),
+    fontSize: headingFontSize,
     color: carouselColors.text,
     ...brandTextStyle(fontFamily, "bold"),
   };
+
+  // Gate 7: on a long hook+title+subtitle+bullets draft, body's stacked
+  // content can be taller than what's actually left for it once the
+  // caption/heading/page-indicator take their share -- and RN doesn't clip
+  // a flex item's overflowing children to its own box, so it renders on top
+  // of the page indicator/watermark instead. Budget what's left after the
+  // heading and shrink the supporting text (not the heading, already
+  // width-fit above) to fit it.
+  const captionHeight = slide.calloutType ? carouselTypeScale.caption * 1.3 : 0;
+  const pageIndicatorHeight = carouselTypeScale.caption * 1.3;
+  const headingHeight =
+    estimateWrappedLineCount(heading, headingFontSize, bodyWidth) * headingFontSize * 1.15;
+  const supportingBudget =
+    height - PADDING * 2 - captionHeight - pageIndicatorHeight - BODY_MARGIN_TOP - headingHeight;
+
+  const supportingBlocks: HeightBlock[] = [];
+  if (slide.hook) {
+    supportingBlocks.push({
+      text: slide.title,
+      fontSize: carouselTypeScale.title,
+      lineHeight: 1.2,
+      availableWidth: bodyWidth,
+      marginTop: 12,
+    });
+  }
+  if (slide.subtitle) {
+    supportingBlocks.push({
+      text: slide.subtitle,
+      fontSize: carouselTypeScale.subtitle,
+      lineHeight: 1.2,
+      availableWidth: bodyWidth,
+      marginTop: 8,
+    });
+  }
+  if (slide.bulletPoints && slide.bulletPoints.length > 0) {
+    slide.bulletPoints.forEach((bullet, i) => {
+      supportingBlocks.push({
+        text: bullet,
+        fontSize: carouselTypeScale.body,
+        lineHeight: 1.4,
+        availableWidth: bodyWidth - BULLET_MARK_RESERVED_WIDTH,
+        marginTop: i === 0 ? 16 : 8,
+      });
+    });
+  }
+  const bodyScale = fitScaleToHeight(supportingBlocks, supportingBudget);
+  const scaledTitleSize = carouselTypeScale.title * bodyScale;
+  const scaledSubtitleSize = carouselTypeScale.subtitle * bodyScale;
+  const scaledBulletSize = carouselTypeScale.body * bodyScale;
 
   return (
     <View
@@ -164,18 +242,24 @@ function AccentBarLayout({ cardRef, slide, index, total, width, height, accentCo
           />
 
           {slide.hook ? (
-            <Text style={{ fontSize: carouselTypeScale.title, color: carouselColors.text, marginTop: 12, ...brandTextStyle(fontFamily, "medium") }}>
+            <Text style={{ fontSize: scaledTitleSize, color: carouselColors.text, marginTop: 12 * bodyScale, ...brandTextStyle(fontFamily, "medium") }}>
               {slide.title}
             </Text>
           ) : null}
 
           {slide.subtitle ? (
-            <Text style={{ fontSize: carouselTypeScale.subtitle, color: carouselColors.textMuted, marginTop: 8, ...brandTextStyle(fontFamily, "regular") }}>
+            <Text style={{ fontSize: scaledSubtitleSize, color: carouselColors.textMuted, marginTop: 8 * bodyScale, ...brandTextStyle(fontFamily, "regular") }}>
               {slide.subtitle}
             </Text>
           ) : null}
 
-          <Bullets bullets={slide.bulletPoints} accentColor={accentColor} fontFamily={fontFamily} />
+          <Bullets
+            bullets={slide.bulletPoints}
+            accentColor={accentColor}
+            fontFamily={fontFamily}
+            fontSize={scaledBulletSize}
+            marginTop={16 * bodyScale}
+          />
         </View>
 
         <PageIndicator index={index} total={total} style={styles.pageIndicatorRight} />
@@ -420,7 +504,12 @@ const styles = StyleSheet.create({
   body: {
     flex: 1,
     justifyContent: "flex-start",
-    marginTop: 16,
+    marginTop: BODY_MARGIN_TOP,
+    // Gate 7 backstop: the height auto-fit above should keep content within
+    // budget, but this guarantees that even if the estimate is off, excess
+    // content clips inside body's own box instead of rendering on top of
+    // the page indicator/watermark below it.
+    overflow: "hidden",
   },
   bodyCentered: {
     flex: 1,
