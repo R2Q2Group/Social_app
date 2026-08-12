@@ -150,6 +150,10 @@ const styles = StyleSheet.create({
     backgroundColor: carouselColors.accent,
   },
   dotInactive: {
-    backgroundColor: carouselColors.surface,
+    // `surface` (#15181F) is nearly invisible against the #0B0D12 background,
+    // which hid the fact that there are more slides to swipe through. The
+    // muted-text grey is the existing token that reads clearly on dark while
+    // still sitting behind the accent-colored active dot.
+    backgroundColor: carouselColors.textMuted,
   },
 });

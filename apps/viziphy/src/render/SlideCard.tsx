@@ -10,6 +10,7 @@ import {
 import type { SlideContent } from "@r2q2/ai-core";
 import { parseAspectRatio } from "./aspectRatio";
 import { enforceTextDensity } from "./textDensity";
+import { fitFontSizeToWidth } from "./fitText";
 import { brandTextStyle, type BrandFontKey } from "../fonts";
 
 const ACCENT_BAR_WIDTH = 6;
@@ -125,9 +126,16 @@ interface LayoutProps {
 
 /** LinkedIn/Facebook: professional, left accent bar, stacked hook/title/subtitle/bullets. */
 function AccentBarLayout({ cardRef, slide, index, total, width, height, accentColor, showWatermark, fontFamily }: LayoutProps) {
-  const headingStyle: TextStyle = slide.hook
-    ? { fontSize: carouselTypeScale.hook, color: carouselColors.text, ...brandTextStyle(fontFamily, "bold") }
-    : { fontSize: carouselTypeScale.title, color: carouselColors.text, ...brandTextStyle(fontFamily, "bold") };
+  const heading = slide.hook || slide.title;
+  const headingStyle: TextStyle = {
+    fontSize: fitFontSizeToWidth(
+      heading,
+      slide.hook ? carouselTypeScale.hook : carouselTypeScale.title,
+      width - ACCENT_BAR_WIDTH - PADDING * 2,
+    ),
+    color: carouselColors.text,
+    ...brandTextStyle(fontFamily, "bold"),
+  };
 
   return (
     <View
@@ -148,7 +156,7 @@ function AccentBarLayout({ cardRef, slide, index, total, width, height, accentCo
 
         <View style={styles.body}>
           <EmphasisText
-            text={slide.hook || slide.title}
+            text={heading}
             emphasisWords={slide.emphasisWords}
             style={headingStyle}
             highlightColor={accentColor}
@@ -179,6 +187,9 @@ function AccentBarLayout({ cardRef, slide, index, total, width, height, accentCo
 
 /** Instagram: centered, colorful — accent circle behind the hook, less text. */
 function CenteredLayout({ cardRef, slide, index, total, width, height, accentColor, showWatermark, fontFamily }: LayoutProps) {
+  const heading = slide.hook || slide.title;
+  const headingFontSize = fitFontSizeToWidth(heading, carouselTypeScale.title, width - PADDING * 2);
+
   return (
     <View
       ref={cardRef}
@@ -198,9 +209,9 @@ function CenteredLayout({ cardRef, slide, index, total, width, height, accentCol
 
         <View style={styles.bodyCentered}>
           <EmphasisText
-            text={slide.hook || slide.title}
+            text={heading}
             emphasisWords={slide.emphasisWords}
-            style={{ fontSize: carouselTypeScale.title, color: carouselColors.text, textAlign: "center", ...brandTextStyle(fontFamily, "bold") }}
+            style={{ fontSize: headingFontSize, color: carouselColors.text, textAlign: "center", ...brandTextStyle(fontFamily, "bold") }}
             highlightColor={accentColor}
             fontFamily={fontFamily}
           />
@@ -222,6 +233,9 @@ function CenteredLayout({ cardRef, slide, index, total, width, height, accentCol
 /** X Threads: one punchy statement, centered, no bullets — bulletPoints are
  * already stripped by enforceTextDensity for this platform. */
 function StatementLayout({ cardRef, slide, index, total, width, height, accentColor, showWatermark, fontFamily }: LayoutProps) {
+  const heading = slide.hook || slide.title;
+  const headingFontSize = fitFontSizeToWidth(heading, carouselTypeScale.title, width - PADDING * 3);
+
   return (
     <View
       ref={cardRef}
@@ -230,9 +244,9 @@ function StatementLayout({ cardRef, slide, index, total, width, height, accentCo
     >
       <View style={styles.statementInner}>
         <EmphasisText
-          text={slide.hook || slide.title}
+          text={heading}
           emphasisWords={slide.emphasisWords}
-          style={{ fontSize: carouselTypeScale.title, color: carouselColors.text, textAlign: "center", ...brandTextStyle(fontFamily, "bold") }}
+          style={{ fontSize: headingFontSize, color: carouselColors.text, textAlign: "center", ...brandTextStyle(fontFamily, "bold") }}
           highlightColor={accentColor}
           fontFamily={fontFamily}
         />
@@ -251,6 +265,17 @@ function StatementLayout({ cardRef, slide, index, total, width, height, accentCo
 /** TikTok/Reels cover: bold single focal point, huge type, no subtitle/bullets
  * — both are already stripped by enforceTextDensity for this platform. */
 function FocalLayout({ cardRef, slide, index, total, width, height, accentColor, showWatermark, fontFamily }: LayoutProps) {
+  const heading = slide.hook || slide.title;
+  // 9:16 is the narrowest card and this the largest type in the app, so it's
+  // the one heading that regularly needs shrinking to keep a long word
+  // ("household") from being broken mid-word.
+  const headingFontSize = fitFontSizeToWidth(
+    heading,
+    carouselTypeScale.hook * 1.3,
+    width - PADDING * 3,
+    carouselTypeScale.title,
+  );
+
   return (
     <View
       ref={cardRef}
@@ -259,9 +284,9 @@ function FocalLayout({ cardRef, slide, index, total, width, height, accentColor,
     >
       <View style={styles.statementInner}>
         <EmphasisText
-          text={slide.hook || slide.title}
+          text={heading}
           emphasisWords={slide.emphasisWords}
-          style={{ fontSize: carouselTypeScale.hook * 1.3, color: carouselColors.text, textAlign: "center", ...(fontFamily ? brandTextStyle(fontFamily, "bold") : { fontWeight: "800" as const }) }}
+          style={{ fontSize: headingFontSize, color: carouselColors.text, textAlign: "center", ...(fontFamily ? brandTextStyle(fontFamily, "bold") : { fontWeight: "800" as const }) }}
           highlightColor={accentColor}
           fontFamily={fontFamily}
         />
@@ -291,7 +316,7 @@ function TopHeavyLayout({ cardRef, slide, index, total, width, height, accentCol
         <EmphasisText
           text={slide.title}
           emphasisWords={slide.emphasisWords}
-          style={{ fontSize: carouselTypeScale.title, color: carouselColors.text, marginTop: 4, ...brandTextStyle(fontFamily, "bold") }}
+          style={{ fontSize: fitFontSizeToWidth(slide.title, carouselTypeScale.title, width - PADDING * 2), color: carouselColors.text, marginTop: 4, ...brandTextStyle(fontFamily, "bold") }}
           highlightColor={accentColor}
           fontFamily={fontFamily}
         />

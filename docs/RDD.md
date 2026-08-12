@@ -119,10 +119,16 @@ Developer/Google Play Console account access and an `eas login` this
 session has no credentials for. The app now runs on a **real Android
 phone** against local Supabase over home WiFi (first non-emulator
 verification), which took a four-part networking fix documented under
-Gate 7. **One open bug carried into the next session:** text is truncated
-mid-word on slide 1 — a fix is committed and verified correct in isolation
-but *not* yet confirmed on-device; see the last Gate 7 bullet for the full
-state, including two verification mistakes not to repeat. The user plans
+Gate 7. **The mid-word text bug carried in from the prior session is now
+closed, and turned out to be two independent defects.** The truncation
+one was already fixed — the phone was just still running an older APK;
+installing the cache-busted build confirmed it on the real device.
+Verifying that surfaced a genuinely separate one: headings were being
+broken mid-word by *layout*, because every layout hard-coded its heading
+font size with no relation to card width, which only shows up on
+TikTok's narrow 9:16 card with a word of 8+ characters. Both are
+documented with their verification evidence under Gate 7, along with a
+user-reported fix for invisible carousel dots. The user plans
 to run Google Play setup (not Apple — company entity needs sorting first);
 what Play Console needs from them is listed in that same bullet's
 surrounding notes.
@@ -920,7 +926,102 @@ system, this must exist before Gate 4 starts, not after Gate 3 as originally sco
       Console API access — a real credential, only worth sharing if the
       user actively wants automated submission rather than uploading
       through the console web UI themselves.
-- [ ] **Open at end of session (2026-08-11): mid-word truncation on the
+- [x] **Closed (2026-08-11, later session): mid-word truncation on the
+      hook/slide 1 — the fix was correct all along and the cache-busted APK
+      did contain it; the phone was simply still running the older build.**
+      Confirmed on the user's real Samsung SM-S906E over adb, and separately
+      on the emulator, both running
+      `apps/viziphy/dist/viziphy-internal.apk`. The decisive test is
+      arithmetic rather than eyeballing, and is worth reusing: the *old*
+      `truncate()` was `text.slice(0, max - 1)`, so for any over-length text
+      it emitted **exactly `max - 1` characters, always**. So the character
+      count alone identifies which build is running, with no false positives:
+      - phone, pre-fix build: `"What if you could detect a water leak 24
+        hours before it ca"` = exactly 59 chars (LinkedIn `limits.title` 60)
+        → old code;
+      - phone, this APK: `"The average household leak wastes 9,000 gallons
+        of water…"` = 56 chars ending on a whole word → fixed code;
+      - emulator, this APK: LinkedIn 54 chars, TikTok 22 chars (limit 30,
+        raw cut would be 29) → fixed code, including the tight-limit guard.
+      The RDD's fallback hypothesis (React Native's own `numberOfLines`
+      clipping producing a visually identical "…") was ruled out outright,
+      not just deprioritized: `numberOfLines`/`ellipsizeMode` appear nowhere
+      in either app, and RN renders no ellipsis without them, so that "…"
+      could only ever have come from `truncate()`. The leading hypothesis
+      (stale Metro transform cache) was therefore right, and the
+      `--rerun-tasks` cache-busted rebuild fixed it — the APK just never got
+      installed on the phone before the session ended.
+- [x] **Found and fixed while verifying the above (2026-08-11): headings were
+      broken mid-word by *layout*, a separate defect from the truncation
+      one.** With the truncation fix live, TikTok/Reels still rendered
+      `The av / erage / hous / ehold / leak…` — but here `truncate()`'s
+      output was already correct (`"The average household leak"`, 26 chars,
+      a clean word boundary under the 30 limit). The break was React Native
+      wrapping *within* a word because the word was wider than the card:
+      every layout hard-coded its heading `fontSize` from
+      `carouselTypeScale` with no relation to card width, and `FocalLayout`
+      used the largest type in the app (`hook * 1.3` = 52dp) on the
+      narrowest card (9:16). Measured on-device via a temporary probe, that
+      card is **259.7dp wide → 187.7dp of text space**, where `household` at
+      52dp needs ~266dp — a guaranteed break. Two content-dependent factors
+      hid this until now: it needs a word of roughly 8+ characters, and
+      AI-generated hook copy skews to short punchy words (the emulator draft
+      that passed used `small`/`leak`/`can`/`waste`).
+      Fixed with `apps/viziphy/src/render/fitText.ts`'s
+      `fitFontSizeToWidth()`, applied to the heading in all five layouts:
+      it estimates the widest word's rendered width (per-character advance
+      ratios, since RN has no synchronous text-measurement API and the size
+      is needed before first paint) and shrinks the font just enough for
+      that word to fit, clamped to a floor. It returns the base size
+      unchanged whenever the text already fits, so layouts that were never
+      at risk render identically — LinkedIn's `accentBar` stayed at exactly
+      40dp through the whole verification. Estimates lean wide on purpose
+      and a `FIT_SAFETY_MARGIN` of 0.94 keeps a fitted word off the exact
+      boundary; without it the probe showed words sizing to *precisely* the
+      available width, where any error in the estimate reintroduces the
+      break.
+      **Verified on the emulator dev client (2026-08-11)** against a draft
+      chosen to contain long words: `"Why Detection Matters"` renders
+      `Detection` (9 chars) whole at a fitted 34.5dp, and
+      `"The cost of prevention is a…"` fits `prevention` (10 chars) at
+      31.7dp, while `"A tiny leak today could cost…"` and `"Signs You Might
+      Have a Leak"` both stay at the base 52dp. `npx tsc --noEmit` clean.
+      Note for future verification: the carousel's paging `ScrollView` did
+      not respond to `adb shell input swipe` at the card's vertical midpoint
+      but did at `y=1200` on a 1080x2400 frame — worth trying a different y
+      before concluding a swipe gesture is broken.
+- [x] **Inactive carousel dots were invisible (2026-08-11, user-reported).**
+      `CarouselPreview`'s `dotInactive` used `carouselColors.surface`
+      (`#15181F`) against the `#0B0D12` background — so nothing indicated
+      there were more slides to swipe to. Switched to
+      `carouselColors.textMuted` (`#9AA1AE`), an existing token rather than
+      a new color. Thumbwave has no dot indicator, so there was nothing to
+      mirror.
+- [ ] **Open (found 2026-08-11, not yet fixed): slide content overflows and
+      collides with the page indicator and watermark on text-heavy drafts.**
+      On LinkedIn's `accentBar` layout with a long hook + title + subtitle +
+      bullets, the subtitle runs underneath both the `1 / N` page indicator
+      and the "Made with Viziphy" watermark, so all three overlap and become
+      hard to read. Visible in the user's original pre-fix screenshot
+      ("Made with Viziphy" over "Early detection technology that") and
+      reproduced on the phone after both text fixes landed, so it is
+      independent of them and pre-existing rather than a regression.
+      Mechanism: `styles.watermark` is `position: absolute` pinned to the
+      card's bottom-right, and `styles.content` is a `space-between` column
+      whose `body` child is unconstrained — when the drafted text is taller
+      than the card, `body` overruns the space reserved for the indicator
+      instead of the text being shrunk or clipped, and the card's
+      `overflow: hidden` just crops whatever lands outside.
+      Worth fixing before store screenshots: the watermark is a *free-tier*
+      element rendered as a normal child specifically so `captureRef` bakes
+      it into exports (Gate 5), which means this collision ships inside
+      exported PNG/PDF output too, not just the on-screen preview — directly
+      relevant to Gate 6's "export quality is App-Store-demo-ready" exit
+      condition. Likely fix is the same family as the heading auto-fit added
+      above (constrain/scale the body to the available height) rather than
+      nudging the watermark, since moving the watermark alone would still
+      leave the indicator overlapping.
+- [ ] **Superseded detail, kept for context: mid-word truncation on the
       hook/slide 1.** Real-device testing surfaced that generated text is
       cut mid-word with an ellipsis (observed: "…become expe…" where the
       source hook was "What if you could catch water leaks before they
