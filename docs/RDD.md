@@ -1357,18 +1357,64 @@ system, this must exist before Gate 4 starts, not after Gate 3 as originally sco
         Supabase host and **zero** occurrences of the `192.168.0.108` dev
         LAN IP, confirming `.env.production` precedence held through the
         upgrade.
-      **Not yet done — this is a bundle-level verification only.** Nothing
-      here has been run on a device or emulator since the upgrade. Given
-      this gate's own history (a "successful" build that was debug-signed; a
-      dev client that looked alive while running a stale bundle; a fix that
-      was correct but never installed), **`BUILD SUCCESSFUL` is not evidence
-      the app works.** Specifically unverified: the edge-to-edge inset
-      change, which is a visual change to every screen in both apps and
-      cannot be confirmed any other way; React 19's rendering behavior
-      across the five `SlideCard` layouts; and the export pipeline end to
-      end (single PDF, hi-res Pro PDF, and the `fflate` batch `.zip`), which
-      is the highest-risk area because it depends on both the
-      `expo-file-system/legacy` repoint and the `captureRef` cast.
+      **Device pass completed (2026-08-13) — the release APK was actually
+      run, not just built.** Deliberately on the
+      `Medium_Phone_API_36.1` emulator (`ro.build.version.release` 16, SDK
+      36) rather than the user's phone: **Android 16 is the only surface
+      where edge-to-edge enforcement actually applies**, so a device on 14
+      or 15 could not have falsified the inset change at all. Cold-booted
+      with `-no-snapshot-load -memory 4096` per this gate's earlier traps;
+      confirmed healthy first (4 GB, no stuck `sensors-service`, swap idle).
+      Installed `app-release.apk` after an uninstall, since the existing
+      dev-client install carries a different signing key.
+      - **Boots clean under React 19 / RN 0.81** — no `AndroidRuntime`
+        fatals, no `ReactNativeJS` errors, process stable throughout.
+      - **Edge-to-edge verified against measured geometry, not by eye.**
+        `dumpsys window` puts the status bar at y 0–63px and the nav bar at
+        y 2337–2400px (24 dp each at density 420). The app background
+        correctly paints full-bleed behind both, while "Account" — the
+        absolutely-positioned `top: 24` element most at risk — sits at
+        y≈154px, comfortably clear. Without the fix it would have landed
+        at y≈63.
+      - **Full idea→draft→render→export chain works against the hosted
+        Supabase project**, including a real Anthropic round trip returning
+        a 7-slide LinkedIn draft.
+      - **All six platform layouts render correctly**, including the two
+        that earlier Gate 7 fixes targeted: TikTok/Reels `focal` breaks only
+        on whole words ("Water damage is the #2…"), so `fitFontSizeToWidth`
+        survives React 19, and LinkedIn/Facebook `accentBar` keeps a clean
+        gap above the page indicator and watermark.
+      - **Export pipeline works end to end.** PNG export produced a real
+        rasterized slide with watermark. PDF export produced a valid
+        multi-page PDF — **validated by opening it through Android's print
+        framework**, which parsed it and rendered real pages (1/7 and 2/7
+        with correct per-slide accent colors and bullets), proving the
+        embedded images decoded rather than merely that a file appeared.
+        Batch export completed all 6 platforms without hanging and produced
+        a real `.zip`. **Zero `Expected to run on UI thread` occurrences**
+        across every capture in the session — the Gate 6 race did not fire
+        once here, on top of already being retry-covered.
+      **One limitation, stated plainly:** the batch `.zip` could not be
+      byte-validated. This emulator runs a Play system image, so `adb root`
+      is refused and the app-private cache holding the file is unreadable,
+      and no share target on the image writes to shared storage without an
+      account. What *is* established: `readAsStringAsync` Base64 is
+      demonstrably correct (the print-rendered PDF's images decoded from
+      it), and the legacy shim's `readAsStringAsync`/`writeAsStringAsync`
+      are both thin pass-throughs to the same `ExponentFileSystem` native
+      module with options forwarded verbatim — there is no separate
+      JS-side encoding path that could differ between the two directions.
+      Given this gate's history of a produced-but-corrupt `.zip`, that is
+      strong evidence rather than proof, and a single byte-level check on a
+      rooted image or a real phone would close it.
+      **Two techniques worth reusing.** Android's print preview is a
+      serviceable PDF validator when the app cache is unreadable — it
+      genuinely parses and rasterizes the file. And
+      `am start -d "viziphy://preview"` re-enters the preview screen with
+      the draft still in `DraftProvider`, which restores state after an
+      over-eager back-press **without burning one of the 3 free-tier
+      generations** — worth knowing, since re-tapping Generate does spend
+      one.
       **Also noticed, not acted on:** the bundle grew from ~88 MB to
       ~105 MB, and the SDK 54 build pulls in a new `libbarhopper_v3.so`
       (ML Kit barcode scanning, ~4.9 MB on `arm64-v8a` alone) that the
@@ -1379,6 +1425,44 @@ system, this must exist before Gate 4 starts, not after Gate 3 as originally sco
       developer tooling out of a production artifact — but it is not a
       blocker for the API 36 deadline and was left alone rather than
       changed unattended alongside an already-large upgrade.
+- [ ] **Found by the SDK 54 device pass (2026-08-13): X's `statement`
+      layout collides its subtitle with the page indicator on screen —
+      pre-existing, preview-only, and NOT caused by the upgrade.** On X's
+      short 16:9 card, a two-line subtitle's second line ("property
+      damage") renders on the same baseline as the "1 / 7" indicator.
+      **Mechanism — identical to the `accentBar` overflow fixed earlier in
+      this gate:** `styles.statementInner` is `flex: 1` with
+      `justifyContent: center`, but its children (heading + subtitle) are
+      unconstrained, so when their natural height exceeds the flex box the
+      content overruns instead of shrinking, and RN doesn't clip a flex
+      item's children to its own box — so it paints over the
+      `PageIndicator` that follows it in the column. **The Gate 7 fix for
+      this exact mechanism (`fitScaleToHeight` + `overflow: hidden`) was
+      only ever applied to `AccentBarLayout`.** The other four layouts
+      (`statement`, `centered`, `focal`, `topHeavy`) still carry the
+      original pattern; `statement` is simply the one whose card is short
+      enough to expose it.
+      **Two things establish this is not a regression from the SDK 54
+      upgrade or its edge-to-edge inset change:**
+      1. **The exported output is clean** — exported X's PDF and opened it
+         through the print framework: heading, subtitle, and a clearly
+         separated "1 / 7"/watermark, no collision. Exports mount the card
+         at a fixed `STANDARD_EXPORT_WIDTH` (720) with the same fixed
+         `carouselTypeScale` font sizes, so they have roughly twice the
+         relative space and are entirely independent of screen insets.
+      2. **The on-screen X card is width-bound, not height-bound.** At
+         411 dp of screen width the 16:9 card resolves to ≈205 dp tall
+         against ≈400 dp of available carousel height, so
+         `CarouselPreview`'s `min(widthBudget, heightBudget)` is decided by
+         width — meaning the 48 dp of vertical space the new `SafeAreaView`
+         consumes cannot have changed this card's size.
+      **Impact is therefore cosmetic and confined to the in-app preview;
+      nothing a user publishes is affected.** Left unfixed deliberately: it
+      is a pre-existing defect rather than upgrade fallout, and the honest
+      fix is to generalize `fitScaleToHeight` across the remaining four
+      layouts rather than patch `statement` alone — worth doing as its own
+      change, with its own device pass, rather than folded into an already
+      large SDK upgrade that is under deadline pressure.
 - [ ] **Closed-testing tester recruitment — how distribution actually works,
       recorded because the expected notification never arrives (2026-08-13).**
       The user was waiting on an email about testing that was never going to
