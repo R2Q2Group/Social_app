@@ -162,6 +162,22 @@ engineering, is now the critical path for Gate 7's exit condition** — it
 cannot be shortened, and it only starts once the 12th tester has opted in.
 The user began recruiting on 2026-08-13.
 
+**Status as of 2026-08-13 (end of session): `versionCode` 3 is live on the
+closed testing track and Google Play's API 36 policy flag has cleared.**
+The Android 16 deadline is fully resolved — no further engineering is
+owed against it. An extension was requested and approved before the
+upload landed; it is now moot, but harmless. **All remaining work on
+Gate 7 is now the 12-tester/14-day clock**, which is pure calendar time.
+
+**Correction worth recording, because the console's own wording is
+misleading:** the Play policy page instructs "Publish a new version of
+your app to **production**," and this session predicted on that basis
+that a closed-testing release would *not* clear the flag. **It did.**
+Shipping `versionCode` 3 to the closed testing track cleared the
+compliance warning without any production release. Do not schedule
+future target-API deadlines on the assumption that production rollout is
+required — a testing-track release was sufficient here.
+
 Highlights from the 2026-08-12 session, in the order they came up:
 
 1. **The previous session's stuck build was exactly what it looked like —
@@ -968,8 +984,15 @@ system, this must exist before Gate 4 starts, not after Gate 3 as originally sco
       gate (detailed later in this gate); recruitment started 2026-08-13.
       **The binding constraint is calendar time, not work** — no amount of
       engineering shortens the 14-day window, and it does not begin until
-      the 12th tester has opted in. Engineering-side, the one thing still
-      owed is a real device pass on the SDK 54 build before it is uploaded.
+      the 12th tester has opted in.
+      **`versionCode` 3 (Expo SDK 54, targetSdk 36) is live on the closed
+      testing track as of 2026-08-13, device-verified before upload, and
+      the API 36 policy flag has cleared.** Nothing engineering-side now
+      blocks this exit condition — it is waiting on real testers using the
+      app, and on the 14-day window closing. The remaining open items
+      under this gate (the `statement` layout overflow, the unvalidated
+      batch `.zip` bytes, `expo-dev-client` bloating release builds) are
+      all non-blocking and are good work to do *while* the clock runs.
 - [x] **Closed (2026-08-11, later session): mid-word truncation on the
       hook/slide 1 — the fix was correct all along and the cache-busted APK
       did contain it; the phone was simply still running the older build.**
@@ -1415,6 +1438,11 @@ system, this must exist before Gate 4 starts, not after Gate 3 as originally sco
       over-eager back-press **without burning one of the 3 free-tier
       generations** — worth knowing, since re-tapping Generate does spend
       one.
+      **Shipped (2026-08-13):** this `.aab` was uploaded to the closed
+      testing track and is live; the Play API 36 policy flag cleared on
+      that release. See the correction in the Section 6 status block — a
+      testing-track release was sufficient, despite the console
+      instructing "publish to production."
       **Also noticed, not acted on:** the bundle grew from ~88 MB to
       ~105 MB, and the SDK 54 build pulls in a new `libbarhopper_v3.so`
       (ML Kit barcode scanning, ~4.9 MB on `arm64-v8a` alone) that the
@@ -1493,6 +1521,54 @@ system, this must exist before Gate 4 starts, not after Gate 3 as originally sco
         tester." A tester who installs under a *different* Google account
         than the one opted in does not count, which is the most common way
         this silently under-counts.
+
+### Next session — start here (written 2026-08-13)
+
+Gate 7 is no longer blocked on engineering. `versionCode` 3 is live on
+closed testing, the API 36 flag is cleared, and the only thing standing
+between here and Gate 7's exit condition is **12 testers opted in for 14
+continuous days** plus real people actually using the app. That is
+calendar time, not work.
+
+So the question for the next session is what to build *while* that clock
+runs. In rough priority order:
+
+1. **Real Google Play Billing — the biggest gap between "beta" and "a
+   product that can take money."** Pro is currently a **mock**:
+   `purchasePro()`/`cancelPro()` call the `upgrade_to_pro()`/
+   `downgrade_to_free()` dev RPCs added in Gate 5. Nothing charges
+   anyone. RDD Section 5 prices Pro at $7-10/mo, so this has to be real
+   before any production launch. The seam was deliberately designed for
+   this (`packages/account-client/src/billing.ts`) — swapping in real IAP
+   only replaces what is inside those two functions. Needs Play Console
+   product IDs set up first.
+2. **Generalize the layout overflow fix.** `fitScaleToHeight` +
+   `overflow: hidden` currently protects only `AccentBarLayout`; the
+   `statement` layout demonstrably overflows (see the entry above) and
+   `centered`/`focal`/`topHeavy` carry the same unguarded pattern. Fix
+   all four together with a device pass, rather than patching `statement`
+   alone.
+3. **Watch the feedback the beta actually produces.** Gate 7 built
+   `draft_feedback` (👍/👎 per platform) and it has never been read
+   against real users. Once testers are in, that table is the first real
+   signal on AI draft quality per platform — and it feeds Gate 8's
+   analytics directly.
+4. **Get `expo-dev-client` out of release builds.** It is compiling into
+   the release variant and pulling `libbarhopper_v3.so` (ML Kit barcode
+   scanning) with it; the bundle went 88 MB → 105 MB on the SDK 54
+   upgrade. Pure download-size win, and keeps developer tooling out of a
+   production artifact.
+5. **Close the two verification gaps** left by the SDK 54 device pass:
+   byte-validate a batch-export `.zip` on a real phone (the emulator's
+   Play image blocked it), and give **Thumbwave** a device pass — it was
+   upgraded to SDK 54 and type-checks, but has not been built or run
+   since, and its face-cutout render path has never been visually
+   confirmed with a real photo (carried over from Gate 4).
+6. **Before any production launch, not before beta:** email confirmations
+   are still disabled (`enable_confirmations = false`) on the hosted
+   project, so anyone can sign up with an unverified address. Turning it
+   on needs an `emailRedirectTo` deep link (`viziphy://`) and an app-side
+   handler that do not exist yet.
 
 ### Gate 8 — Scale & Analytics
 - [ ] Usage analytics (which platforms/styles are most generated)
