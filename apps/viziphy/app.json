@@ -13,16 +13,14 @@
     },
     "android": {
       "package": "com.r2q2group.viziphy",
-      "versionCode": 2
+      "versionCode": 3
     },
     "plugins": [
       "expo-router",
       "expo-dev-client",
       "expo-asset",
-      "./plugins/withKotlinGradlePluginVersion",
       "expo-font",
-      "./plugins/withReleaseSigningConfig",
-      "./plugins/withTargetSdk35"
+      "./plugins/withReleaseSigningConfig"
     ]
   }
 }

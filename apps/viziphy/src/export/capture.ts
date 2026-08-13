@@ -9,11 +9,21 @@ import { captureRef } from "react-native-view-shot";
  * resolves. */
 export async function captureSlidePng(ref: View): Promise<string> {
   return withTimeout(
-    captureRef(ref, {
-      format: "png",
-      quality: 1,
-      result: "tmpfile",
-    }),
+    captureRef(
+      // Types-only gap introduced by the SDK 54 upgrade: RN 0.81 types a View
+      // instance as `NativeMethods & ViewComponent`, which no longer
+      // structurally satisfies React 19's `ReactInstance` (that still requires
+      // `Component`'s `refs`). What's passed is a real host-component instance,
+      // exactly what captureRef resolves a native handle from at runtime, so
+      // this is a declaration mismatch rather than a behavior change. Kept to
+      // this one call site so `View` stays the domain type everywhere else.
+      ref as unknown as Parameters<typeof captureRef>[0],
+      {
+        format: "png",
+        quality: 1,
+        result: "tmpfile",
+      },
+    ),
     15000,
     "Capturing the slide timed out.",
   );

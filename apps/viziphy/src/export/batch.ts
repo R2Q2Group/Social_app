@@ -1,4 +1,6 @@
-import * as FileSystem from "expo-file-system";
+// expo-file-system 19 (SDK 54) replaced the classic API with the new
+// File/Directory one; the classic calls used here live on under /legacy.
+import * as FileSystem from "expo-file-system/legacy";
 import { zipSync, type Zippable } from "fflate";
 import { toByteArray, fromByteArray } from "base64-js";
 import { carouselPlatforms, type CarouselPlatformKey } from "@r2q2/design-tokens";

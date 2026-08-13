@@ -23,8 +23,7 @@
         {
           "photosPermission": "Thumbwave needs access to your photos to add a face cutout to a thumbnail."
         }
-      ],
-      "./plugins/withKotlinGradlePluginVersion"
+      ]
     ]
   }
 }

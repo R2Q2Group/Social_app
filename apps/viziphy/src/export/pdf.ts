@@ -1,4 +1,6 @@
-import * as FileSystem from "expo-file-system";
+// expo-file-system 19 (SDK 54) replaced the classic API with the new
+// File/Directory one; the classic calls used here live on under /legacy.
+import * as FileSystem from "expo-file-system/legacy";
 import * as Print from "expo-print";
 import { parseAspectRatio } from "../render/aspectRatio";
 

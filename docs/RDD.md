@@ -143,7 +143,26 @@ access token that ended up in a chat transcript) and three more release-
 pipeline bugs found only by attempting a real submission, is under Gate 7
 below. The user is finishing the remaining Play Console listing fields
 (country availability, etc.) while the review runs.
-Highlights, in the order they came up:
+
+**Status as of 2026-08-13:** the first release is published to closed
+testing. Two things moved since. (1) **Google Play now requires targeting
+Android 16 (API 36) by 2026-08-31** or updates are blocked — which forced
+an **Expo SDK 52 → 54 upgrade** (RN 0.76.3 → 0.81.5, React 18 → 19),
+because the real blocker was not the target level itself but **16 KB page
+size**: measurement on the already-submitted `.aab` showed 18 of 19 native
+libs at 4 KB alignment, and those `.so` files ship prebuilt inside the RN
+and Expo AARs, so SDK 52 could not be patched in place at any effort. The
+upgrade is done and `versionCode` 3 is built; full detail and the seven
+breakages it surfaced are under Gate 7. (2) **No testing email was ever
+coming** — Play doesn't email testers; the opt-in link has to be
+distributed by hand. The Play account is **personal** (confirmed by the
+user), so Play additionally requires **12 testers opted in for 14
+continuous days** before production access. **That 14-day clock, not
+engineering, is now the critical path for Gate 7's exit condition** — it
+cannot be shortened, and it only starts once the 12th tester has opted in.
+The user began recruiting on 2026-08-13.
+
+Highlights from the 2026-08-12 session, in the order they came up:
 
 1. **The previous session's stuck build was exactly what it looked like —
    machine resource contention, not a broken build — but recovering from it
@@ -943,6 +962,14 @@ system, this must exist before Gate 4 starts, not after Gate 3 as originally sco
       gate for what that took. Exit condition is still not met (no external
       tester has used the app yet), but the remaining blocker is now
       Google's review turnaround, not further engineering or account setup.
+      **Update (2026-08-13):** the path to this exit condition is now
+      concrete and time-bound rather than open-ended. The account is
+      personal, so it runs through Play's 12-testers/14-continuous-days
+      gate (detailed later in this gate); recruitment started 2026-08-13.
+      **The binding constraint is calendar time, not work** — no amount of
+      engineering shortens the 14-day window, and it does not begin until
+      the 12th tester has opted in. Engineering-side, the one thing still
+      owed is a real device pass on the SDK 54 build before it is uploaded.
 - [x] **Closed (2026-08-11, later session): mid-word truncation on the
       hook/slide 1 — the fix was correct all along and the cache-busted APK
       did contain it; the phone was simply still running the older build.**
@@ -1208,6 +1235,180 @@ system, this must exist before Gate 4 starts, not after Gate 3 as originally sco
       closed testing release and submitted. **Awaiting Google's publishing
       review**; the user is filling in the remaining Play Console listing
       fields (country availability, etc.) while that runs.
+- [x] **Expo SDK 52 → 54 upgrade, forced by Google Play's Android 16
+      (API 36) target requirement (2026-08-13).** The user reported a Play
+      Console policy warning — "App must target Android 16 (API level 36) or
+      higher", highest non-compliant target API level Android 15 (API 35),
+      **action required by Aug 31, 2026** — with a "Request more time"
+      option offered. This blocks *future updates* only; the
+      already-submitted `versionCode` 2 release is unaffected and stays
+      live.
+      **The important finding is that this was not the same class of change
+      as the targetSdk 34 → 35 bump above, and a one-line plugin edit would
+      have produced a bundle Play rejects for a different reason.** Two
+      walls, not one:
+      1. **targetSdk 36 alone was cosmetic.** The toolchain was AGP 8.6.0
+         (pinned by RN 0.76.3's gradle plugin, whose max tested compileSdk is
+         35), so compileSdk 36 would have needed suppression flags.
+      2. **16 KB page size — the actual blocker, and it was measured, not
+         assumed.** Google Play requires 16 KB page size support for apps
+         targeting Android 15+. Extracting `base/lib/arm64-v8a` from the
+         *already-submitted* `versionCode` 2 `.aab` and reading the ELF
+         `PT_LOAD` `p_align` of every native library found **18 of 19 at
+         4096**, only `libandroidx.graphics.path.so` at 16384. Those `.so`
+         files ship prebuilt inside the React Native and Expo AARs, so they
+         are not fixable from build config at all — RN 0.76 cannot produce a
+         compliant binary. That is what made an in-place patch of SDK 52
+         impossible and forced the SDK upgrade.
+      Upgraded both apps to **Expo SDK 54** (RN 0.81.5, React 19.1.0), the
+      minimum version that clears both walls — RN 0.81 defaults to targeting
+      API 36 and is 16 KB compliant. Versions were taken from expo@54's own
+      `bundledNativeModules.json` rather than guessed. Six real breakages,
+      each found by a check rather than by guesswork:
+      1. **`expo-file-system` 19 replaced the classic API.** Three call
+         sites (`src/export/batch.ts`, `src/export/pdf.ts`) use
+         `readAsStringAsync`/`writeAsStringAsync`/`cacheDirectory`/
+         `EncodingType`. All four survive under `expo-file-system/legacy`
+         (confirmed against the installed package's own `.d.ts` before
+         relying on it), so this was an import-path change, not a rewrite of
+         the export pipeline.
+      2. **React 19 types broke `captureRef`.** RN 0.81 types a View
+         instance as `NativeMethods & ViewComponent`, which no longer
+         structurally satisfies React 19's `ReactInstance` (still requires
+         `Component`'s `refs`). Types-only — the value passed is a real
+         host-component instance, exactly what `captureRef` resolves a
+         native handle from — so it's confined to a single documented cast
+         at the one call site in `capture.ts`, keeping `View` as the domain
+         type everywhere else.
+      3. **`packages/account-client` declared a native module as a hard
+         dependency, which forked the whole dependency tree.** It listed
+         `@react-native-async-storage/async-storage@1.23.1` under
+         `dependencies`, which dragged **a second React Native (0.76.3) and
+         `@types/react` 18.3.31 into the monorepo root** even after both
+         apps were on 0.81.5/19.1.17. That is what produced Thumbwave's
+         wall of `TS2786: 'View' cannot be used as a JSX component` errors —
+         the classic two-copies-of-`@types/react` signature, visible in the
+         error text as a fully-qualified path mismatch plus a stray `bigint`
+         in `ReactNode`. Viziphy type-checked clean throughout, so **the
+         duplicate would have been easy to mistake for a Thumbwave-specific
+         code problem.** Fixed properly by moving it to
+         `peerDependencies` — a native module must resolve to exactly one
+         copy from the host app, or the linked native code and the JS
+         disagree — which is the correct shape for a shared package here
+         anyway, and both apps already declare it directly.
+      4. **A stale `package-lock.json` kept re-pinning the old versions.**
+         With `@expo/devtools`' `peerOptional react-native@"*"`, npm kept
+         resolving to the locked 0.76.3 and considered the tree valid;
+         neither deleting the offending directories nor adding `overrides`
+         changed it. Required deleting `package-lock.json` and every
+         `node_modules` for a clean resolve. The root `overrides` block
+         gained `react-native`/`react`/`@types/react` pins alongside the
+         existing ones so this cannot silently re-fork.
+      5. **`withTargetSdk35.js` was obsolete — and would have silently
+         no-opped.** It string-replaced `'34'` in the generated
+         `android/build.gradle`; the SDK 54 template has no such string, and
+         a failed `String.replace` throws nothing. Deleted. SDK 54's
+         template resolves the SDK levels through the `expo-root-project`
+         Gradle plugin instead of the old `ext { }` block.
+      6. **`withKotlinGradlePluginVersion.js` was worse than obsolete — it
+         broke the build outright.** It injects
+         `classpath("...kotlin-gradle-plugin:${kotlinVersion}")`, but the
+         SDK 54 template removed the `ext { }` block that *defined*
+         `kotlinVersion`, so Gradle failed at configuration time with
+         `Could not get unknown property 'kotlinVersion'`. Deleted from
+         **both** apps (Thumbwave carried a copy) rather than only the one
+         being shipped, so Thumbwave doesn't hit the same wall later. The
+         Gate 2 problem it existed to solve is handled by
+         `expo-root-project` in SDK 54.
+      7. **Android 16 enforces edge-to-edge with no opt-out, and neither app
+         had any inset handling at all** — `SafeArea`/`useSafeAreaInsets`/
+         `StatusBar` appeared nowhere in either codebase, and every screen
+         runs `headerShown: false`, so nothing was consuming the status-bar
+         inset. The screens' fixed `paddingTop: 24` would have rendered
+         underneath the status bar (and `index.tsx`'s absolutely-positioned
+         `accountLink` at `top: 24` with it). Fixed once at each app's root
+         `_layout.tsx` with `SafeAreaProvider` + `SafeAreaView` rather than
+         per screen, so all screens stay consistent and their own padding
+         stacks on top of the inset.
+      **Verified:** `npx tsc --noEmit` clean on both apps. Exactly one copy
+      each of `react-native` (0.81.5) and `@types/react` (19.1.17) in the
+      tree. Gradle itself reports `compileSdk=android-36 targetSdk=36
+      minSdk=24` — read back from the configured project rather than
+      inferred from the template. `versionCode` bumped to **3** in
+      `app.json` *before* building, per this gate's own earlier lesson that
+      Play permanently reserves any version code it has seen.
+      **Release bundle built and fully verified (2026-08-13):**
+      `BUILD SUCCESSFUL in 10m 52s` (732 tasks) via
+      `EXPO_NO_METRO_WORKSPACE_ROOT=1 ./gradlew bundleRelease` — the same
+      env-var caveat as every prior release build, still required, still not
+      a persisted config change. On the produced `.aab`:
+      - **16 KB alignment: 20 of 20 `arm64-v8a` libs at `p_align` 16384**,
+        against 18-of-19-failing on the `versionCode` 2 bundle. This is the
+        measurement that justified the whole upgrade, re-run on the output.
+        (`armeabi-v7a` is 32-bit and outside the requirement, which targets
+        64-bit devices.)
+      - `targetSdkVersion="36"`, `minSdkVersion="24"`, `versionCode="3"` in
+        the merged manifest.
+      - `jarsigner -verify` → `jar verified`, `CN=Shannan.Crosson,
+        OU=R2Q2 Group` — i.e. the upload key, **not** the debug fallback.
+        Worth continuing to check on every release build: the BOM bug
+        earlier in this gate proved this failure mode is completely silent.
+      - Embedded Hermes bundle (magic `c61fbc03`) contains the hosted
+        Supabase host and **zero** occurrences of the `192.168.0.108` dev
+        LAN IP, confirming `.env.production` precedence held through the
+        upgrade.
+      **Not yet done — this is a bundle-level verification only.** Nothing
+      here has been run on a device or emulator since the upgrade. Given
+      this gate's own history (a "successful" build that was debug-signed; a
+      dev client that looked alive while running a stale bundle; a fix that
+      was correct but never installed), **`BUILD SUCCESSFUL` is not evidence
+      the app works.** Specifically unverified: the edge-to-edge inset
+      change, which is a visual change to every screen in both apps and
+      cannot be confirmed any other way; React 19's rendering behavior
+      across the five `SlideCard` layouts; and the export pipeline end to
+      end (single PDF, hi-res Pro PDF, and the `fflate` batch `.zip`), which
+      is the highest-risk area because it depends on both the
+      `expo-file-system/legacy` repoint and the `captureRef` cast.
+      **Also noticed, not acted on:** the bundle grew from ~88 MB to
+      ~105 MB, and the SDK 54 build pulls in a new `libbarhopper_v3.so`
+      (ML Kit barcode scanning, ~4.9 MB on `arm64-v8a` alone) that the
+      SDK 52 build did not contain. It arrives via `expo-dev-client`'s
+      launcher, which appears to be compiling into the *release* variant.
+      Worth investigating whether dev-client can be excluded from release
+      builds — it would cut a meaningful chunk of download size and keep
+      developer tooling out of a production artifact — but it is not a
+      blocker for the API 36 deadline and was left alone rather than
+      changed unattended alongside an already-large upgrade.
+- [ ] **Closed-testing tester recruitment — how distribution actually works,
+      recorded because the expected notification never arrives (2026-08-13).**
+      The user was waiting on an email about testing that was never going to
+      come: **Google Play does not email testers.** For a closed testing
+      track you either add Google account addresses to an email list or
+      enable the **opt-in link**, and *you* distribute that link yourself
+      (Play Console → Testing → Closed testing → Testers). Each tester must
+      open it, sign in, and click "Become a tester" before installing —
+      invited-but-not-opted-in does not count as anything.
+      **Confirmed by the user (2026-08-13): the Play account is a personal
+      account, so the 12-testers/14-days requirement applies.** Play grants
+      production access only after **12 testers are opted in continuously
+      for 14 days**. All 12 must overlap in the same unbroken window — if
+      one drops out on day 7, the counter resets. (Organization accounts
+      are exempt; this one is not.)
+      **This is now the critical path for Gate 7's exit condition, and it
+      is a wall-clock minimum that cannot be compressed by any amount of
+      engineering.** Even with review already cleared and a compliant
+      bundle uploaded, production is at least 14 days out from the moment
+      the 12th tester opts in. The user began recruiting testers on
+      2026-08-13. Two practical consequences worth holding onto:
+      - **Recruit more than 12.** The reset-on-drop-out rule means 12 is a
+        floor with no margin; one person uninstalling on day 10 costs the
+        whole window.
+      - **Opting in is a deliberate act by each tester**, not something the
+        developer can do for them — they must open the link, sign in with
+        the Google account they'll install under, and click "Become a
+        tester." A tester who installs under a *different* Google account
+        than the one opted in does not count, which is the most common way
+        this silently under-counts.
 
 ### Gate 8 — Scale & Analytics
 - [ ] Usage analytics (which platforms/styles are most generated)
