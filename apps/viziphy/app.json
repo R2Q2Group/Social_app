@@ -12,7 +12,8 @@
       "supportsTablet": false
     },
     "android": {
-      "package": "com.r2q2group.viziphy"
+      "package": "com.r2q2group.viziphy",
+      "versionCode": 2
     },
     "plugins": [
       "expo-router",
@@ -20,7 +21,8 @@
       "expo-asset",
       "./plugins/withKotlinGradlePluginVersion",
       "expo-font",
-      "./plugins/withReleaseSigningConfig"
+      "./plugins/withReleaseSigningConfig",
+      "./plugins/withTargetSdk35"
     ]
   }
 }

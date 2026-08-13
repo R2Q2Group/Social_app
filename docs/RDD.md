@@ -128,10 +128,21 @@ broken mid-word by *layout*, because every layout hard-coded its heading
 font size with no relation to card width, which only shows up on
 TikTok's narrow 9:16 card with a word of 8+ characters. Both are
 documented with their verification evidence under Gate 7, along with a
-user-reported fix for invisible carousel dots. The user plans
-to run Google Play setup (not Apple — company entity needs sorting first);
-what Play Console needs from them is listed in that same bullet's
-surrounding notes.
+user-reported fix for invisible carousel dots.
+
+**Status as of 2026-08-12 (later session):** the two blockers called out
+above — no production backend, no real Play Console submission — are both
+closed. A hosted Supabase project (`r2q2-social-app`) is live and the app's
+release builds point at it; a real signed `.aab` (upload-keystore signed,
+`targetSdkVersion` 35, `versionCode` 2) is uploaded to a Google Play closed
+testing release and **submitted, awaiting Google's publishing review**.
+That review outcome is the new blocker — genuinely external now, not
+engineering work. Full detail, including two real security findings (a
+keystore password sitting in a plaintext file in the repo, and an
+access token that ended up in a chat transcript) and three more release-
+pipeline bugs found only by attempting a real submission, is under Gate 7
+below. The user is finishing the remaining Play Console listing fields
+(country availability, etc.) while the review runs.
 Highlights, in the order they came up:
 
 1. **The previous session's stuck build was exactly what it looked like —
@@ -926,6 +937,12 @@ system, this must exist before Gate 4 starts, not after Gate 3 as originally sco
       Console API access — a real credential, only worth sharing if the
       user actively wants automated submission rather than uploading
       through the console web UI themselves.
+      **Update (2026-08-12):** the account/listing/keystore prerequisites
+      above are done and a real closed-testing release is submitted —
+      see the production-backend and Play-submission entries later in this
+      gate for what that took. Exit condition is still not met (no external
+      tester has used the app yet), but the remaining blocker is now
+      Google's review turnaround, not further engineering or account setup.
 - [x] **Closed (2026-08-11, later session): mid-word truncation on the
       hook/slide 1 — the fix was correct all along and the cache-busted APK
       did contain it; the phone was simply still running the older build.**
@@ -1081,6 +1098,116 @@ system, this must exist before Gate 4 starts, not after Gate 3 as originally sco
       rather than routine — currently one draft is generated and reused
       across all 6 platforms (deliberate, one AI call not six), with the
       per-platform limits applied client-side afterward.
+- [x] **Production Supabase backend provisioned and the app pointed at it
+      (2026-08-12).** Previously the app only ever talked to a local
+      `supabase start` instance over LAN/emulator-loopback IPs — no hosted
+      project existed. Created org "R2Q2 Group" and project
+      `r2q2-social-app` (ref `jymkhwnlffrtfqzcmyfy`, `us-east-1`) via
+      `supabase login --token` (browser OAuth login doesn't work through
+      this session's non-TTY shell) and pushed all four migrations plus
+      auth config with `supabase config push`. That push caught a real
+      landmine before it shipped: a freshly created hosted project defaults
+      `enable_anonymous_sign_ins` to **false**, which would have broken
+      every session in the app outright (Gate 1's whole identity model
+      starts every caller anonymous) — pushed the local override back to
+      `true`. Also discovered the hosted project's *other* auth defaults
+      (`max_frequency = 1m0s`, `otp_length = 8`) are stricter than the
+      CLI's local-dev defaults (`1s`/`6`); pinned both explicitly in
+      `config.toml` so a future `config push` can't quietly regress them.
+      `enable_confirmations` stays off for this first release too, not just
+      local dev — turning it on needs an `emailRedirectTo`/deep-link
+      (`viziphy://`) and an app-side handler that don't exist yet, so
+      anyone can sign up with an unverified email until that's built. Same
+      "ship the mock, document the gap, revisit later" call already made
+      for the Gate 5 billing mock. Deployed both edge functions
+      (`draft`, `entitlement`) and set the existing Anthropic key (already
+      real, from local dev) as a hosted secret straight from the local
+      `.env` file via `supabase secrets set --env-file` piped through a
+      throwaway temp file — the key value itself never appeared in any
+      tool output or chat transcript. Added `apps/viziphy/.env.production`
+      (gitignored) so release builds pick up the hosted URL/anon key
+      automatically via Expo's env-file precedence
+      (`NODE_ENV=production` → `.env.production` before `.env`), leaving
+      the dev `.env` and local-Supabase workflow untouched. Removed the
+      `withCleartextTraffic` plugin and its
+      `usesCleartextTraffic="true"` manifest flag — production is real
+      HTTPS now, and Play flags that attribute on review; debug builds are
+      unaffected since they already get cleartext from React Native's
+      standard `android/app/src/debug/AndroidManifest.xml` override,
+      independent of this plugin. **Verified end-to-end (2026-08-12):**
+      anonymous sign-up against the hosted project returns a session
+      (`is_anonymous: true`), and a live `draft` call with that session's
+      token round-tripped through Claude and returned a real 6-slide
+      LinkedIn JSON payload with `HTTP 200` — the full chain (DB, Auth,
+      Edge Functions, secret) confirmed working together, not just each
+      piece individually.
+      **Two real secrets handling issues surfaced along the way, both
+      closed:** (1) `GenKey Tool.txt` — the upload keystore's password in
+      plaintext — was sitting at the repo root, untracked (never pushed to
+      GitHub) but not gitignored either, so a stray `git add -A` would have
+      caught it; moved into `Documents\PrivateKeys` next to the actual
+      `.jks`, where the file's own notes already said it belonged. (2) A
+      Supabase personal access token got pasted into the chat transcript
+      when login was set up (unavoidable — the CLI's browser-based login
+      flow doesn't work in this session's non-TTY shell, so a manually
+      generated token was the only path) — flagged immediately and the
+      user rotated it from the dashboard once setup was done.
+- [x] **First real Google Play closed-testing submission attempt, three
+      more genuine blockers found only by actually trying to upload
+      (2026-08-12).** All prior release-build verification (this gate's
+      earlier entries) proved the *build* worked — none of it exercised
+      Play Console's own acceptance checks, which is where these surfaced:
+      1. **Release builds were silently debug-signed despite the Gate 6
+         `withReleaseSigningConfig` plugin being correctly applied.** Root
+         cause: the user-level `~/.gradle/gradle.properties` holding the
+         `VIZIPHY_UPLOAD_*` credentials had a UTF-8 BOM (`EF BB BF`) at the
+         very start of the file, corrupting the first property's key
+         (`VIZIPHY_UPLOAD_STORE_FILE`) so Gradle's
+         `project.hasProperty('VIZIPHY_UPLOAD_STORE_FILE')` check silently
+         returned `false` and the signing config fell through to its debug
+         fallback — no error, no warning, a build that reports
+         `BUILD SUCCESSFUL` either way. Only caught because the resulting
+         `.aab` was explicitly `jarsigner -verify -certs`'d and its `CN`
+         checked before handing it off, rather than trusting the build
+         output alone; worth doing that check on every future release
+         build, since this failure mode produces no other signal. Fixed by
+         stripping the BOM (`tail -c +4` over the file) — the property
+         values themselves were untouched, never printed to any log.
+      2. **Play rejected the upload: "must target at least API level 35",
+         while the project's `targetSdkVersion` default was 34** (root
+         `android/build.gradle`'s `ext` block; `compileSdkVersion` and
+         `buildToolsVersion` were already `35`, so this was a same-toolchain
+         config bump, not an SDK/dependency upgrade). Fixed with a new
+         local config plugin, `withTargetSdk35.js`, following the same
+         `withProjectBuildGradle` pattern as the existing
+         `withKotlinGradlePluginVersion` plugin, so the bump survives a
+         future `expo prebuild` instead of being a one-off manual edit.
+      3. **Play rejected the *next* upload too: "Version code 1 has already
+         been used,"** even though the first (API-34-targeting) draft was
+         never published — Play permanently reserves any `versionCode` it
+         has ever seen an upload for, discarded draft or not. Bumped to
+         `versionCode` 2 in both `app.json` (`expo.android.versionCode`,
+         the persistent source of truth for future prebuilds) and the
+         currently-generated `android/app/build.gradle`. Worth remembering
+         for every future release: bump `versionCode` *before* building,
+         not after Play rejects it.
+      **Also worth recording as a ruled-out hypothesis:** the first
+      `bundleRelease` attempt after adding `.env.production` failed with
+      the exact `Unable to resolve module .../expo-router/entry.js from
+      D:\Social_Media_app/.` error this gate hit before (see the
+      `EXPO_NO_METRO_WORKSPACE_ROOT` entry above) — but this time it
+      reproduced identically in both a git-bash shell *and* native
+      PowerShell, ruling out "MSYS path mangling" as the cause (the
+      initial, wrong guess). The actual fix was the same one already
+      documented: `EXPO_NO_METRO_WORKSPACE_ROOT=1` on the release-bundling
+      invocation specifically; it just has to be re-set every session since
+      it's an env var, not a persisted config change.
+      **Current status (2026-08-12):** a `.aab` with all of the above fixed
+      — upload-key signed (`CN=Shannan.Crosson, OU=R2Q2 Group`),
+      `targetSdkVersion` 35, `versionCode` 2 — is uploaded to a Google Play
+      closed testing release and submitted. **Awaiting Google's publishing
+      review**; the user is filling in the remaining Play Console listing
+      fields (country availability, etc.) while that runs.
 
 ### Gate 8 — Scale & Analytics
 - [ ] Usage analytics (which platforms/styles are most generated)
