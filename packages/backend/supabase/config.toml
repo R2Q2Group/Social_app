@@ -9,17 +9,26 @@ port = 54322
 
 [auth]
 enabled = true
+# Unused while enable_confirmations is off below (no confirmation-email
+# redirect is sent); revisit together with that flag.
 site_url = "http://localhost:3000"
 # Required for the Gate 1 identity decision (RDD.md Section 6, Gate 1) --
 # callers get an anonymous session before the Gate 3.5 account system exists.
 enable_anonymous_sign_ins = true
 
 [auth.email]
-# Local/dev only: skips the confirmation-link round trip so the
-# anonymous-session-upgrade and sign-up/sign-in flows (Gate 3.5) are
-# testable without a real inbox. Revisit before a hosted/production project
-# is linked -- production should require confirmation.
+# Deliberately off for the first hosted release too, not just local dev:
+# turning it on needs an emailRedirectTo/deep-link (viziphy://) and an
+# app-side handler to complete the session after the confirmation link is
+# tapped, which doesn't exist yet. Same "ship the mock, document the gap"
+# call as the Gate 5 billing mock -- anyone can sign up with an unverified
+# email until this is built. Revisit before opening beyond closed testing.
 enable_confirmations = false
+# Hosted project defaults are stricter than the CLI's local-dev defaults
+# (1s / 6-digit) -- pin explicitly so `config push` can't quietly regress
+# them back down.
+max_frequency = "1m0s"
+otp_length = 8
 
 [edge_runtime]
 enabled = true

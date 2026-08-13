@@ -20,7 +20,7 @@
       "expo-asset",
       "./plugins/withKotlinGradlePluginVersion",
       "expo-font",
-      "./plugins/withCleartextTraffic"
+      "./plugins/withReleaseSigningConfig"
     ]
   }
 }
